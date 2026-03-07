@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from utils.auth import ensure_streamer_token
 from utils.gex_calculator import GEXCalculator
+from utils.sentiment_calculator import SentimentCalculator
 
 st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
 
@@ -480,33 +481,33 @@ def main():
         fig = go.Figure()
 
         if gex_view == "Calls vs Puts":
-            # Original view: Calls (green) vs Puts (red)
+            # Calls = Positive Gamma (Stabilizing), Puts = Negative Gamma (Destabilizing)
             fig.add_trace(go.Bar(
                 x=gex_df['strike'],
                 y=gex_df['call_gex'],
-                name='Call GEX',
+                name='Positive GEX (Calls)',
                 marker_color='green'
             ))
             fig.add_trace(go.Bar(
                 x=gex_df['strike'],
                 y=-gex_df['put_gex'],
-                name='Put GEX',
+                name='Negative GEX (Puts)',
                 marker_color='red'
             ))
             barmode = 'relative'
-            yaxis_title = 'Gamma Exposure ($)'
+            yaxis_title = 'Dealer Gamma Exposure ($)'
 
         elif gex_view == "Net GEX":
-            # Net GEX: Call - Put (can be positive or negative)
+            # Net GEX: Positive - Negative (determines dealer stance)
             colors = ['green' if x >= 0 else 'red' for x in gex_df['net_gex']]
             fig.add_trace(go.Bar(
                 x=gex_df['strike'],
                 y=gex_df['net_gex'],
-                name='Net GEX',
+                name='Net Dealer GEX',
                 marker_color=colors
             ))
             barmode = 'group'
-            yaxis_title = 'Net GEX ($) - Green=Call Heavy, Red=Put Heavy'
+            yaxis_title = 'Net Dealer GEX ($) - Green=Stabilizing, Red=Destabilizing'
 
         else:  # Absolute GEX
             # Absolute Net GEX: |Call - Put| (always positive)
@@ -562,28 +563,94 @@ def main():
         st.plotly_chart(fig, width='stretch')
 
     with col2:
-        st.subheader("📈 Total GEX")
+        st.subheader("📈 Dealer Gamma Exposure")
 
-        st.metric("Total Call GEX", f"${metrics['total_call_gex']:,.0f}")
-        st.metric("Total Put GEX", f"${metrics['total_put_gex']:,.0f}")
-        st.metric("Net GEX", f"${metrics['net_gex']:,.0f}")
+        # Determine dealer stance
+        net_gex = metrics['net_gex']
+        if net_gex > 0:
+            dealer_stance = "🟢 Positive Gamma (Stabilizing)"
+        else:
+            dealer_stance = "🔴 Negative Gamma (Destabilizing)"
+
+        st.markdown(f"**Dealer Stance:** {dealer_stance}")
+
+        st.metric(
+            "Positive Gamma (Calls)",
+            f"${metrics['total_call_gex']:,.0f}",
+            help="Dealers are long calls (institutions sold). Stabilizing - dealers sell rallies, buy dips."
+        )
+        st.metric(
+            "Negative Gamma (Puts)",
+            f"${metrics['total_put_gex']:,.0f}",
+            help="Dealers are short puts (institutions bought). Destabilizing - dealers sell dips, buy rallies."
+        )
+        st.metric(
+            "Net Dealer Gamma",
+            f"${net_gex:,.0f}",
+            delta=dealer_stance.split(" ", 1)[1],
+            delta_color="normal" if net_gex > 0 else "inverse",
+            help="Net = Positive Gamma - Negative Gamma. Positive = stabilizing, Negative = destabilizing."
+        )
 
         if metrics['max_gex_strike']:
             st.divider()
-            st.metric("Max GEX Strike", f"${metrics['max_gex_strike']:,.0f}")
+            st.metric(
+                "Max GEX Strike",
+                f"${metrics['max_gex_strike']:,.0f}",
+                help="Strike with highest absolute gamma. Acts as a 'magnet' - price tends to gravitate here."
+            )
 
         if metrics.get('zero_gamma'):
             st.divider()
             zero_gamma = metrics['zero_gamma']
+            spot = st.session_state.underlying_price
+            if spot > zero_gamma:
+                flip_status = "📍 Spot ABOVE flip (Positive Gamma)"
+            else:
+                flip_status = "📍 Spot BELOW flip (Negative Gamma)"
+
             st.metric(
                 "Zero Gamma (Flip)",
                 f"${zero_gamma:,.2f}",
-                help="Strike where Net GEX crosses zero. Dealers long gamma above, short gamma below."
+                help="Strike where dealer gamma flips from positive to negative. Above = stabilizing, Below = destabilizing."
             )
+            st.caption(flip_status)
 
     # Volume and Open Interest Section
     # Aggregate data by strike (used for IV Skew and Volume/OI)
     strike_df = aggregate_by_strike(st.session_state.option_data)
+
+    # Sentiment Ratios Section
+    st.divider()
+    st.header("📊 Sentiment Ratios")
+
+    sentiment_calc = SentimentCalculator()
+    ratio_col1, ratio_col2 = st.columns(2)
+
+    with ratio_col1:
+        dealer_result = sentiment_calc.calculate_from_gex_metrics(metrics)
+        st.metric(
+            "Dealer Gamma Ratio",
+            f"{dealer_result.ratio:.2f}",
+            delta=dealer_result.label,
+            delta_color="normal" if dealer_result.ratio >= 0.5 else "inverse",
+            help="Call GEX / Total GEX. 1.0 = stabilizing, 0.0 = destabilizing, 0.5 = neutral."
+        )
+        st.progress(dealer_result.ratio)
+
+    with ratio_col2:
+        sentiment_result = sentiment_calc.calculate_from_strike_df(strike_df)
+        if sentiment_result:
+            st.metric(
+                "Active Sentiment (Customers)",
+                f"{sentiment_result.ratio:.2f}",
+                delta=sentiment_result.label,
+                delta_color="normal" if sentiment_result.ratio >= 0.5 else "inverse",
+                help="Call Volume / Total Volume. 1.0 = bullish, 0.0 = bearish, 0.5 = neutral."
+            )
+            st.progress(sentiment_result.ratio)
+        else:
+            st.metric("Active Sentiment", "N/A", help="No volume data available")
 
     # IV Skew Section
     if not strike_df.empty and (strike_df['call_iv'].notna().any() or strike_df['put_iv'].notna().any()):
