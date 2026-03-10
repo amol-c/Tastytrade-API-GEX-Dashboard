@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import time
+import base64
 import requests
 from dotenv import load_dotenv
 
@@ -178,9 +179,9 @@ def get_streamer_token(access_token=None, force_refresh=False):
         if 'data' in result and 'token' in result['data']:
             streamer_token = result['data']['token']
 
-            # Streamer tokens typically last ~24 hours
-            # Using conservative 20 hours to ensure refresh before expiry
-            expires_in = 20 * 3600  # 20 hours in seconds
+            # Streamer tokens can expire sooner than expected
+            # Using conservative 12 hours to ensure refresh before expiry
+            expires_in = 12 * 3600  # 12 hours in seconds
             expires_at = time.time() + expires_in
 
             # Save token with expiration

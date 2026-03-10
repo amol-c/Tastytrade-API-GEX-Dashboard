@@ -252,6 +252,24 @@ class GEXCalculator:
             total_put = 0.0
             max_net_gex = 0.0
             max_gex_strike = 0
+            max_call_gex = 0.0
+            call_wall = None
+            max_put_gex = 0.0
+            put_wall = None
+            resistance_strikes = []  # (strike, net_gex) - above spot
+            support_strikes = []     # (strike, net_gex) - below spot
+
+            # Get sorted strikes to determine "10 strikes" range
+            sorted_strikes = sorted(self.gex_by_strike.keys())
+            spot_idx = 0
+            for i, s in enumerate(sorted_strikes):
+                if s >= self.spot_price:
+                    spot_idx = i
+                    break
+
+            # 10 strikes above and below
+            nearby_above = set(sorted_strikes[spot_idx:spot_idx + 10])
+            nearby_below = set(sorted_strikes[max(0, spot_idx - 10):spot_idx])
 
             for strike, gex in self.gex_by_strike.items():
                 call_gex = gex['call_gex']
@@ -265,6 +283,28 @@ class GEXCalculator:
                     max_net_gex = net_gex
                     max_gex_strike = strike
 
+                # Call Wall: highest call GEX (SpotGamma style)
+                if call_gex > max_call_gex:
+                    max_call_gex = call_gex
+                    call_wall = strike
+
+                # Put Wall: highest put GEX (SpotGamma style)
+                if put_gex > max_put_gex:
+                    max_put_gex = put_gex
+                    put_wall = strike
+
+                # High Gamma Resistance: above spot, within 10 strikes
+                if strike in nearby_above:
+                    resistance_strikes.append((strike, net_gex))
+
+                # High Gamma Support: below spot, within 10 strikes
+                if strike in nearby_below:
+                    support_strikes.append((strike, net_gex))
+
+            # Sort by absolute Net GEX descending
+            resistance_strikes.sort(key=lambda x: abs(x[1]), reverse=True)
+            support_strikes.sort(key=lambda x: abs(x[1]), reverse=True)
+
             return {
                 'total_call_gex': total_call,
                 'total_put_gex': total_put,
@@ -272,6 +312,12 @@ class GEXCalculator:
                 'max_gex_strike': max_gex_strike,
                 'max_gex_value': max_net_gex,
                 'zero_gamma': self._get_zero_gamma_level_unlocked(),
+                'call_wall': call_wall,
+                'put_wall': put_wall,
+                'hg_resistance_1': resistance_strikes[0][0] if len(resistance_strikes) > 0 else None,
+                'hg_resistance_2': resistance_strikes[1][0] if len(resistance_strikes) > 1 else None,
+                'hg_support_1': support_strikes[0][0] if len(support_strikes) > 0 else None,
+                'hg_support_2': support_strikes[1][0] if len(support_strikes) > 1 else None,
                 'num_options': len(self.options)
             }
 

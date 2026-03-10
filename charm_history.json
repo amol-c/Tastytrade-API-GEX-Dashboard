@@ -1,0 +1,122 @@
+[
+  {
+    "timestamp": "2026-03-07T21:06:50.586389",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32959011.085605558,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:07:19.129472",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32958562.718832724,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:07:46.087964",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32958137.944367725,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:09:48.053441",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -22297232.78295328,
+    "es_futures": -66.2,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:10:24.288364",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32955613.38869243,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:11:00.284256",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32955031.791252114,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:11:27.911321",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32954583.509573665,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:13:25.293374",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -22275838.590076502,
+    "es_futures": -66.1,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:14:08.766210",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -22271538.689897504,
+    "es_futures": -66.1,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:17:50.655602",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32948207.95540821,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:18:26.560745",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -32947594.173004232,
+    "es_futures": -97.8,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T21:20:39.356739",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -22232640.10280756,
+    "es_futures": -66.0,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T22:11:56.620360",
+    "spot_price": 6740.02,
+    "expiry": "260309",
+    "net_charm": -21908474.25586699,
+    "es_futures": -65.0,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T22:13:37.676619",
+    "spot_price": 6740.02,
+    "expiry": "260310",
+    "net_charm": -19731755.950192787,
+    "es_futures": -58.6,
+    "flow_direction": "SELL"
+  },
+  {
+    "timestamp": "2026-03-07T22:14:08.662965",
+    "spot_price": 6740.02,
+    "expiry": "260310",
+    "net_charm": -19733897.592447035,
+    "es_futures": -58.6,
+    "flow_direction": "SELL"
+  }
+]

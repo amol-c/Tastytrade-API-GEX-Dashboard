@@ -6,13 +6,27 @@ Works on weekends with Friday's closing data
 import streamlit as st
 import json
 import time
+import logging
 from datetime import datetime, timedelta
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/dashboard.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 from websocket import create_connection
 import pandas as pd
 import plotly.graph_objects as go
 from utils.auth import ensure_streamer_token
 from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
+from utils.market_analyzer import MarketAnalyzer
+from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
+from components.charm_display import render_charm_section
 
 st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
 
@@ -41,11 +55,18 @@ def connect_websocket(token):
         "acceptKeepaliveTimeout": 60,
         "version": "1.0.0"
     }))
-    ws.recv()
+    data = ws.recv()
+    logger.info(f"SETUP response: {data[:200] if data else 'empty'}")
+    if not data:
+        raise ConnectionError("WebSocket returned empty response during SETUP")
 
     # AUTH
     while True:
-        msg = json.loads(ws.recv())
+        data = ws.recv()
+        logger.info(f"AUTH response: {data[:200] if data else 'empty'}")
+        if not data:
+            raise ConnectionError(f"WebSocket returned empty response during AUTH")
+        msg = json.loads(data)
         if msg.get("type") == "AUTH_STATE":
             if msg["state"] == "UNAUTHORIZED":
                 ws.send(json.dumps({"type": "AUTH", "channel": 0, "token": token}))
@@ -59,7 +80,11 @@ def connect_websocket(token):
         "service": "FEED",
         "parameters": {"contract": "AUTO"}
     }))
-    msg = json.loads(ws.recv())
+    data = ws.recv()
+    logger.info(f"CHANNEL_REQUEST response: {data[:200] if data else 'empty'}")
+    if not data:
+        raise ConnectionError("WebSocket returned empty response during CHANNEL_REQUEST")
+    msg = json.loads(data)
 
     return ws
 
@@ -185,6 +210,51 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
             continue
 
     return data
+
+
+
+
+def run_market_analysis(symbol, price, expiration, option_data, gex_metrics):
+    """Run unified market analysis combining GEX, charm, and sentiment."""
+    from utils.gex_calculator import parse_option_symbol
+
+    # Build options data with required fields
+    options_data = {}
+    total_call_vol = 0
+    total_put_vol = 0
+
+    for sym, data in option_data.items():
+        parsed = parse_option_symbol(sym)
+        if parsed:
+            options_data[sym] = {
+                'iv': data.get('iv'),
+                'oi': data.get('oi'),
+                'strike': parsed['strike'],
+                'type': parsed['type'],
+            }
+            vol = data.get('volume', 0) or 0
+            try:
+                vol = float(vol)
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Could not convert volume '{vol}' to float for {sym}: {e}")
+                vol = 0
+            if parsed['type'] == 'C':
+                total_call_vol += vol
+            else:
+                total_put_vol += vol
+
+    analyzer = MarketAnalyzer()
+    return analyzer.analyze({
+        'symbol': symbol,
+        'spot_price': price,
+        'expiry': expiration,
+        'gex_metrics': gex_metrics,
+        'options_data': options_data,
+        'volume_data': {
+            'total_call_volume': total_call_vol,
+            'total_put_volume': total_put_vol,
+        },
+    })
 
 
 def aggregate_by_strike(option_data):
@@ -405,6 +475,20 @@ def main():
                     st.session_state.expiration = expiration
                     st.session_state.option_count = len(option_data)
                     st.session_state.last_fetch_time = time.time()
+                    st.session_state.market_analysis = run_market_analysis(
+                        symbol, price, expiration, option_data, calc.get_total_gex_metrics()
+                    )
+
+                    # Track charm history
+                    analysis = st.session_state.market_analysis
+                    if analysis and analysis.charm_flow.net_charm is not None:
+                        charm_tracker = CharmHistoryTracker(expiry=expiration)
+                        charm_tracker.add_record(
+                            spot_price=price,
+                            net_charm=analysis.charm_flow.net_charm,
+                            flow_direction=analysis.charm_flow.direction,
+                            expiry=expiration,
+                        )
 
                     greeks_count = sum(1 for d in option_data.values() if "gamma" in d)
                     oi_count = sum(1 for d in option_data.values() if "oi" in d)
@@ -540,7 +624,7 @@ def main():
                 line_color="purple",
                 line_width=2,
                 annotation_text=f"Zero Γ: ${zero_gamma:,.2f}",
-                annotation_position="bottom"
+                annotation_position="top"
             )
 
         # Format expiration for display
@@ -651,6 +735,81 @@ def main():
             st.progress(sentiment_result.ratio)
         else:
             st.metric("Active Sentiment", "N/A", help="No volume data available")
+
+    # Market Analysis Section
+    if 'market_analysis' in st.session_state and st.session_state.market_analysis:
+        st.divider()
+        st.header("🎯 Market Analysis")
+
+        analysis = st.session_state.market_analysis
+        bias_emoji = {'BULLISH': '🟢', 'BEARISH': '🔴', 'NEUTRAL': '🟡'}
+        conf_emoji = {'HIGH': '🔥', 'MEDIUM': '⚡', 'LOW': '💤'}
+
+        # Main bias display
+        bias_col1, bias_col2, bias_col3 = st.columns(3)
+        with bias_col1:
+            st.metric(
+                "Market Bias",
+                f"{bias_emoji.get(analysis.bias, '')} {analysis.bias}",
+                delta=f"Score: {analysis.bias_score:.0f}/100",
+                delta_color="normal" if analysis.bias == 'BULLISH' else "inverse" if analysis.bias == 'BEARISH' else "off"
+            )
+        with bias_col2:
+            st.metric(
+                "Confidence",
+                f"{conf_emoji.get(analysis.confidence, '')} {analysis.confidence}"
+            )
+        with bias_col3:
+            st.metric(
+                "Charm Flow",
+                analysis.charm_flow.direction,
+                delta="UP pressure" if analysis.charm_flow.direction == 'BUY' else "DOWN pressure" if analysis.charm_flow.direction == 'SELL' else "Neutral",
+                delta_color="normal" if analysis.charm_flow.direction == 'BUY' else "inverse" if analysis.charm_flow.direction == 'SELL' else "off"
+            )
+
+        # Key levels
+        with st.expander("Key Levels", expanded=True):
+            level_col1, level_col2, level_col3, level_col4 = st.columns(4)
+            with level_col1:
+                gamma_flip = analysis.key_levels.gamma_flip
+                st.metric("Gamma Flip", f"${gamma_flip:,.0f}" if gamma_flip else "N/A")
+            with level_col2:
+                # Show gamma regime
+                if gamma_flip and analysis.current_price > gamma_flip:
+                    st.metric("Gamma Regime", "Positive", delta="Stabilizing")
+                else:
+                    st.metric("Gamma Regime", "Negative", delta="Destabilizing", delta_color="inverse")
+            with level_col3:
+                cw = analysis.key_levels.call_wall
+                st.metric("Call Wall", f"${cw:,.0f}" if cw else "N/A")
+            with level_col4:
+                pw = analysis.key_levels.put_wall
+                st.metric("Put Wall", f"${pw:,.0f}" if pw else "N/A")
+
+            # High Gamma Levels (within 10 strikes of current price)
+            st.caption("High Gamma Levels (within 10 strikes of current price)")
+            hg_col1, hg_col2, hg_col3, hg_col4 = st.columns(4)
+            with hg_col1:
+                hg_res1 = analysis.key_levels.hg_resistance_1
+                st.metric("HG Resist 1", f"${hg_res1:,.0f}" if hg_res1 else "N/A")
+            with hg_col2:
+                hg_res2 = analysis.key_levels.hg_resistance_2
+                st.metric("HG Resist 2", f"${hg_res2:,.0f}" if hg_res2 else "N/A")
+            with hg_col3:
+                hg_sup1 = analysis.key_levels.hg_support_1
+                st.metric("HG Support 1", f"${hg_sup1:,.0f}" if hg_sup1 else "N/A")
+            with hg_col4:
+                hg_sup2 = analysis.key_levels.hg_support_2
+                st.metric("HG Support 2", f"${hg_sup2:,.0f}" if hg_sup2 else "N/A")
+
+        # Charm Flow with ES Futures Equivalent
+        expiry = st.session_state.get('expiration', '')
+        render_charm_section(analysis, expiry)
+
+        # AI Prompt
+        with st.expander("AI Analysis Prompt"):
+            st.code(analysis.to_ai_prompt(), language="markdown")
+            st.caption("Copy this prompt and send to Claude or other AI for market assessment.")
 
     # IV Skew Section
     if not strike_df.empty and (strike_df['call_iv'].notna().any() or strike_df['put_iv'].notna().any()):

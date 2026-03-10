@@ -1,0 +1,650 @@
+[
+  {
+    "timestamp": "2026-03-09T22:51:33.939561",
+    "expiry": "260310",
+    "spot_price": 6795.99,
+    "net_charm": -230172300.8511986,
+    "es_futures": 677.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:03:31.418645",
+    "expiry": "260310",
+    "spot_price": 6821.24,
+    "net_charm": -4406815952.236801,
+    "es_futures": 12920.9,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:04:52.374298",
+    "expiry": "260310",
+    "spot_price": 6819.03,
+    "net_charm": -4510700371.819437,
+    "es_futures": 13229.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:06:31.419802",
+    "expiry": "260310",
+    "spot_price": 6810.96,
+    "net_charm": -4824324520.797861,
+    "es_futures": 14166.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:07:52.394794",
+    "expiry": "260310",
+    "spot_price": 6811.23,
+    "net_charm": -4850058522.322904,
+    "es_futures": 14241.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:09:13.593832",
+    "expiry": "260310",
+    "spot_price": 6810.04,
+    "net_charm": -4913522733.869504,
+    "es_futures": 14430.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:10:34.346661",
+    "expiry": "260310",
+    "spot_price": 6811.84,
+    "net_charm": -4897710501.111044,
+    "es_futures": 14380.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:11:55.398283",
+    "expiry": "260310",
+    "spot_price": 6819.35,
+    "net_charm": -4659766335.511908,
+    "es_futures": 13666.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:13:17.178725",
+    "expiry": "260310",
+    "spot_price": 6814.07,
+    "net_charm": -4888498533.714201,
+    "es_futures": 14348.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:14:38.019440",
+    "expiry": "260310",
+    "spot_price": 6815.24,
+    "net_charm": -4913605100.037551,
+    "es_futures": 14419.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:15:59.391067",
+    "expiry": "260310",
+    "spot_price": 6815.62,
+    "net_charm": -4957090677.395368,
+    "es_futures": 14546.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:17:19.990869",
+    "expiry": "260310",
+    "spot_price": 6817.51,
+    "net_charm": -4834380847.603717,
+    "es_futures": 14182.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:18:40.954264",
+    "expiry": "260310",
+    "spot_price": 6816.65,
+    "net_charm": -4949777022.037505,
+    "es_futures": 14522.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:20:02.069031",
+    "expiry": "260310",
+    "spot_price": 6822.28,
+    "net_charm": -4718989352.980149,
+    "es_futures": 13834.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:21:22.903801",
+    "expiry": "260310",
+    "spot_price": 6820.04,
+    "net_charm": -4828613266.1412525,
+    "es_futures": 14160.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:22:43.903275",
+    "expiry": "260310",
+    "spot_price": 6817.84,
+    "net_charm": -4955965022.876233,
+    "es_futures": 14538.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:24:05.109745",
+    "expiry": "260310",
+    "spot_price": 6817.73,
+    "net_charm": -4987259461.944644,
+    "es_futures": 14630.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:25:25.963347",
+    "expiry": "260310",
+    "spot_price": 6818.26,
+    "net_charm": -5019089234.39969,
+    "es_futures": 14722.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:26:47.179310",
+    "expiry": "260310",
+    "spot_price": 6822.95,
+    "net_charm": -5908344634.731697,
+    "es_futures": 17319.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:28:09.065812",
+    "expiry": "260310",
+    "spot_price": 6823.8,
+    "net_charm": -5923192189.589906,
+    "es_futures": 17360.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:29:29.898818",
+    "expiry": "260310",
+    "spot_price": 6817.86,
+    "net_charm": -5121887713.08707,
+    "es_futures": 15024.9,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:30:50.384849",
+    "expiry": "260310",
+    "spot_price": 6820.06,
+    "net_charm": -5081028538.18384,
+    "es_futures": 14900.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:32:10.903094",
+    "expiry": "260310",
+    "spot_price": 6823.37,
+    "net_charm": -6069957682.025444,
+    "es_futures": 17791.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:33:31.897112",
+    "expiry": "260310",
+    "spot_price": 6823.02,
+    "net_charm": -6120838609.525898,
+    "es_futures": 17941.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:34:52.970159",
+    "expiry": "260310",
+    "spot_price": 6824.72,
+    "net_charm": -6084315089.24762,
+    "es_futures": 17830.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:36:14.411269",
+    "expiry": "260310",
+    "spot_price": 6825.82,
+    "net_charm": -6086600935.426998,
+    "es_futures": 17834.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:37:35.398689",
+    "expiry": "260310",
+    "spot_price": 6826.85,
+    "net_charm": -6087177674.174571,
+    "es_futures": 17833.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:38:55.956591",
+    "expiry": "260310",
+    "spot_price": 6825.37,
+    "net_charm": -6203804940.29186,
+    "es_futures": 18178.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:40:17.848657",
+    "expiry": "260310",
+    "spot_price": 6828.29,
+    "net_charm": -6028069973.061797,
+    "es_futures": 17656.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:41:38.965198",
+    "expiry": "260310",
+    "spot_price": 6826.72,
+    "net_charm": -6210985966.777679,
+    "es_futures": 18196.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:42:59.823236",
+    "expiry": "260310",
+    "spot_price": 6826.61,
+    "net_charm": -6271160080.301941,
+    "es_futures": 18372.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:44:20.407860",
+    "expiry": "260310",
+    "spot_price": 6825.59,
+    "net_charm": -6388836626.3059845,
+    "es_futures": 18720.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:45:41.024304",
+    "expiry": "260310",
+    "spot_price": 6825.36,
+    "net_charm": -6440933371.775735,
+    "es_futures": 18873.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:47:01.882389",
+    "expiry": "260310",
+    "spot_price": 6820.44,
+    "net_charm": -5517089005.604545,
+    "es_futures": 16178.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:48:22.392526",
+    "expiry": "260310",
+    "spot_price": 6819.67,
+    "net_charm": -5587384140.4611,
+    "es_futures": 16386.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:49:42.906132",
+    "expiry": "260310",
+    "spot_price": 6822.8,
+    "net_charm": -6674902284.937168,
+    "es_futures": 19566.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:51:03.400503",
+    "expiry": "260310",
+    "spot_price": 6820.37,
+    "net_charm": -5631456240.870365,
+    "es_futures": 16513.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:52:24.389465",
+    "expiry": "260310",
+    "spot_price": 6823.89,
+    "net_charm": -6754172567.906184,
+    "es_futures": 19795.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:53:45.824420",
+    "expiry": "260310",
+    "spot_price": 6827.58,
+    "net_charm": -6470764168.081434,
+    "es_futures": 18954.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:55:07.145144",
+    "expiry": "260310",
+    "spot_price": 6826.71,
+    "net_charm": -6665598191.386243,
+    "es_futures": 19528.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:56:28.314514",
+    "expiry": "260310",
+    "spot_price": 6827.8,
+    "net_charm": -6565174421.330178,
+    "es_futures": 19230.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:57:49.047132",
+    "expiry": "260310",
+    "spot_price": 6828.48,
+    "net_charm": -6583621430.94189,
+    "es_futures": 19282.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T12:59:10.528424",
+    "expiry": "260310",
+    "spot_price": 6827.05,
+    "net_charm": -6820700512.933233,
+    "es_futures": 19981.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:00:32.033935",
+    "expiry": "260310",
+    "spot_price": 6825.91,
+    "net_charm": -6929460673.24164,
+    "es_futures": 20303.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:01:52.938855",
+    "expiry": "260310",
+    "spot_price": 6827.17,
+    "net_charm": -6889056466.520513,
+    "es_futures": 20181.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:03:13.341047",
+    "expiry": "260310",
+    "spot_price": 6830.9,
+    "net_charm": -6614763721.554337,
+    "es_futures": 19367.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:04:34.052814",
+    "expiry": "260310",
+    "spot_price": 6830.34,
+    "net_charm": -6666057617.090126,
+    "es_futures": 19519.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:05:54.422008",
+    "expiry": "260310",
+    "spot_price": 6830.72,
+    "net_charm": -6705731397.931317,
+    "es_futures": 19634.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:07:15.390683",
+    "expiry": "260310",
+    "spot_price": 6833.29,
+    "net_charm": -6758861583.509078,
+    "es_futures": 19782.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:08:36.380447",
+    "expiry": "260310",
+    "spot_price": 6833.49,
+    "net_charm": -6773555862.963147,
+    "es_futures": 19824.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:09:57.385143",
+    "expiry": "260310",
+    "spot_price": 6831.46,
+    "net_charm": -6827025312.36779,
+    "es_futures": 19987.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:11:18.889617",
+    "expiry": "260310",
+    "spot_price": 6834.04,
+    "net_charm": -6851903476.731346,
+    "es_futures": 20052.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:12:40.038072",
+    "expiry": "260310",
+    "spot_price": 6830.69,
+    "net_charm": -6956189365.689023,
+    "es_futures": 20367.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:14:01.390257",
+    "expiry": "260310",
+    "spot_price": 6828.57,
+    "net_charm": -7173138621.4608345,
+    "es_futures": 21009.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:15:22.382305",
+    "expiry": "260310",
+    "spot_price": 6829.69,
+    "net_charm": -7175694888.389335,
+    "es_futures": 21013.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:16:42.899983",
+    "expiry": "260310",
+    "spot_price": 6834.5,
+    "net_charm": -7066358511.958631,
+    "es_futures": 20678.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:18:04.354824",
+    "expiry": "260310",
+    "spot_price": 6835.42,
+    "net_charm": -7060133812.840422,
+    "es_futures": 20657.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:19:25.050297",
+    "expiry": "260310",
+    "spot_price": 6836.86,
+    "net_charm": -7027126378.4277935,
+    "es_futures": 20556.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:20:45.402878",
+    "expiry": "260310",
+    "spot_price": 6837.22,
+    "net_charm": -7055728202.116277,
+    "es_futures": 20639.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:22:05.922702",
+    "expiry": "260310",
+    "spot_price": 6836.3,
+    "net_charm": -7162552897.91617,
+    "es_futures": 20954.5,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:23:26.402497",
+    "expiry": "260310",
+    "spot_price": 6835.92,
+    "net_charm": -7214056400.257104,
+    "es_futures": 21106.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:24:46.977670",
+    "expiry": "260310",
+    "spot_price": 6838.35,
+    "net_charm": -7094465448.037827,
+    "es_futures": 20749.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:26:07.364850",
+    "expiry": "260310",
+    "spot_price": 6838.43,
+    "net_charm": -7145261212.31818,
+    "es_futures": 20897.4,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:27:28.345297",
+    "expiry": "260310",
+    "spot_price": 6840.0,
+    "net_charm": -7150454245.399504,
+    "es_futures": 20907.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:28:49.091808",
+    "expiry": "260310",
+    "spot_price": 6842.7,
+    "net_charm": -7309006277.023936,
+    "es_futures": 21362.9,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:30:10.369272",
+    "expiry": "260310",
+    "spot_price": 6844.06,
+    "net_charm": -7257730844.037657,
+    "es_futures": 21208.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:31:31.391753",
+    "expiry": "260310",
+    "spot_price": 6840.43,
+    "net_charm": -7313386350.255134,
+    "es_futures": 21382.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:32:51.912837",
+    "expiry": "260310",
+    "spot_price": 6838.44,
+    "net_charm": -7505394093.350609,
+    "es_futures": 21950.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:34:12.915173",
+    "expiry": "260310",
+    "spot_price": 6834.43,
+    "net_charm": -7874019334.773883,
+    "es_futures": 23042.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:35:34.346512",
+    "expiry": "260310",
+    "spot_price": 6833.45,
+    "net_charm": -8068691954.170794,
+    "es_futures": 23615.3,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:36:35.896591",
+    "expiry": "260310",
+    "spot_price": 6830.28,
+    "net_charm": -8169762138.451297,
+    "es_futures": 23922.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:37:57.409290",
+    "expiry": "260310",
+    "spot_price": 6824.17,
+    "net_charm": -8732931087.949747,
+    "es_futures": 25594.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:39:18.908561",
+    "expiry": "260310",
+    "spot_price": 6820.64,
+    "net_charm": -7487911104.296442,
+    "es_futures": 21956.6,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:40:40.387523",
+    "expiry": "260310",
+    "spot_price": 6823.77,
+    "net_charm": -9006656019.159267,
+    "es_futures": 26397.9,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:42:01.901225",
+    "expiry": "260310",
+    "spot_price": 6828.73,
+    "net_charm": -8604509423.470509,
+    "es_futures": 25200.9,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:43:23.387557",
+    "expiry": "260310",
+    "spot_price": 6825.5,
+    "net_charm": -9015850450.48656,
+    "es_futures": 26418.1,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:45:13.036720",
+    "expiry": "260310",
+    "spot_price": 6824.24,
+    "net_charm": -9264160898.59303,
+    "es_futures": 27150.7,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:46:34.043558",
+    "expiry": "260310",
+    "spot_price": 6826.06,
+    "net_charm": -9219694217.719877,
+    "es_futures": 27013.2,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:47:55.450320",
+    "expiry": "260310",
+    "spot_price": 6829.68,
+    "net_charm": -8814984144.081676,
+    "es_futures": 25813.8,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:49:16.941156",
+    "expiry": "260310",
+    "spot_price": 6835.18,
+    "net_charm": -8742179834.42833,
+    "es_futures": 25580.0,
+    "flow_direction": "BUY"
+  },
+  {
+    "timestamp": "2026-03-10T13:50:38.388446",
+    "expiry": "260310",
+    "spot_price": 6832.63,
+    "net_charm": -9027406553.213282,
+    "es_futures": 26424.4,
+    "flow_direction": "BUY"
+  }
+]
