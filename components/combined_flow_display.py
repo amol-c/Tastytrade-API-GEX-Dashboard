@@ -13,6 +13,7 @@ def calculate_combined_flow(
     gex_by_strike: Dict[float, Dict[str, float]],
     vex_by_strike: Dict[float, Dict[str, float]],
     iv_direction: str,
+    iv_slope: float = 0.0,
 ) -> Dict[float, Dict[str, float]]:
     """
     Calculate combined flow strength at each strike.
@@ -20,12 +21,17 @@ def calculate_combined_flow(
     Logic:
     - IV Falling (bullish): +GEX + +VEx = Strong Support, -GEX + -VEx = Strong Resistance
     - IV Rising (bearish): +GEX + +VEx = Weak (conflicting), -GEX + -VEx = Weak (conflicting)
+    - IV slope intensity (-1 to +1) weights the VEx contribution
 
     Returns:
         Dict of strike -> {gex, vex, combined_flow, strength, label}
     """
     all_strikes = set(gex_by_strike.keys()) | set(vex_by_strike.keys())
     combined = {}
+
+    # Use absolute slope to weight VEx contribution (0 to 1)
+    # Higher slope = stronger VEx effect
+    slope_weight = abs(iv_slope) if iv_slope else 0.0
 
     for strike in all_strikes:
         gex_data = gex_by_strike.get(strike, {})
@@ -38,13 +44,14 @@ def calculate_combined_flow(
         gex_sign = 1 if net_gex > 0 else -1 if net_gex < 0 else 0
         vex_sign = 1 if net_vex > 0 else -1 if net_vex < 0 else 0
 
-        # Calculate VEx flow direction based on IV
-        # +VEx + IV falling = BUY (+1), +VEx + IV rising = SELL (-1)
-        # -VEx + IV falling = SELL (-1), -VEx + IV rising = BUY (+1)
+        # Calculate VEx flow direction based on IV direction and slope intensity
+        # +VEx + IV falling = BUY, +VEx + IV rising = SELL
+        # -VEx + IV falling = SELL, -VEx + IV rising = BUY
+        # Slope intensity (0-1) weights how much VEx contributes
         if iv_direction == "FALLING":
-            vex_flow = vex_sign  # +VEx = buy, -VEx = sell
+            vex_flow = vex_sign * slope_weight  # +VEx = buy, -VEx = sell, weighted by slope
         elif iv_direction == "RISING":
-            vex_flow = -vex_sign  # +VEx = sell, -VEx = buy
+            vex_flow = -vex_sign * slope_weight  # +VEx = sell, -VEx = buy, weighted by slope
         else:
             vex_flow = 0  # Flat IV = neutral vanna
 
@@ -56,13 +63,20 @@ def calculate_combined_flow(
         # Positive = supportive (dealers buy), Negative = resistance (dealers sell)
         combined_flow = gex_flow + vex_flow
 
-        # Strength based on alignment
-        if gex_flow != 0 and vex_flow != 0:
-            if gex_flow == vex_flow:
-                strength = "STRONG"
+        # Strength based on alignment and slope intensity
+        # vex_flow is now weighted by slope (-1 to +1 range)
+        if gex_flow != 0 and abs(vex_flow) > 0.1:
+            # Check if same direction
+            if (gex_flow > 0 and vex_flow > 0) or (gex_flow < 0 and vex_flow < 0):
+                # Aligned - strength based on slope intensity
+                if abs(vex_flow) >= 0.5:
+                    strength = "STRONG"
+                else:
+                    strength = "MODERATE"
             else:
+                # Conflicting
                 strength = "WEAK"
-        elif gex_flow != 0 or vex_flow != 0:
+        elif gex_flow != 0 or abs(vex_flow) > 0.1:
             strength = "MODERATE"
         else:
             strength = "NEUTRAL"
@@ -95,9 +109,13 @@ def render_combined_flow_section(
     symbol: str,
     spot_price: float,
     expiry: str,
+    iv_slope: float = 0.0,
 ):
     """
     Render the combined GEX + VEx + IV flow chart.
+
+    Args:
+        iv_slope: Normalized VIX slope (-1 to +1) for weighting VEx contribution
     """
     st.header("🎯 Combined Flow (GEX + VEx + IV)")
 
@@ -105,7 +123,17 @@ def render_combined_flow_section(
         st.warning("⚠️ No data available for combined flow")
         return
 
-    combined = calculate_combined_flow(gex_by_strike, vex_by_strike, iv_direction)
+    # Toggle for using 1-hour IV slope weighting
+    use_slope = st.checkbox(
+        "Use 1-hour IV Slope",
+        value=True,
+        help="When enabled, VEx contribution is weighted by IV slope intensity. When disabled, VEx uses full weight if IV is directional."
+    )
+
+    # If not using slope, use 1.0 (full weight) when directional, 0 when flat
+    effective_slope = iv_slope if use_slope else (1.0 if iv_direction != "FLAT" else 0.0)
+
+    combined = calculate_combined_flow(gex_by_strike, vex_by_strike, iv_direction, effective_slope)
 
     if not combined:
         st.warning("⚠️ Could not calculate combined flow")
@@ -123,7 +151,7 @@ def render_combined_flow_section(
         _render_combined_chart(df, symbol, spot_price, expiry, iv_direction)
 
     with col2:
-        _render_combined_metrics(df, spot_price, iv_direction)
+        _render_combined_metrics(df, spot_price, iv_direction, effective_slope, use_slope)
 
 
 def _render_combined_chart(df: pd.DataFrame, symbol: str, spot_price: float, expiry: str, iv_direction: str):
@@ -201,24 +229,40 @@ def _render_combined_chart(df: pd.DataFrame, symbol: str, spot_price: float, exp
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_combined_metrics(df: pd.DataFrame, spot_price: float, iv_direction: str):
+def _render_combined_metrics(df: pd.DataFrame, spot_price: float, iv_direction: str, iv_slope: float = 0.0, use_slope: bool = True):
     """Render the combined flow metrics panel."""
     st.subheader("📊 Flow Analysis")
 
-    # IV Direction indicator
+    # IV Direction and Slope indicator
     iv_color = "red" if iv_direction == "RISING" else "green" if iv_direction == "FALLING" else "gray"
     st.markdown(f"**IV Direction:** :{iv_color}[{iv_direction}]")
 
-    with st.expander("ℹ️ How it works"):
-        st.markdown("""
-**Combined Flow = GEX + VEx (adjusted for IV)**
+    if use_slope:
+        st.markdown(f"**IV Slope:** `{iv_slope:+.2f}` (VEx weight: {abs(iv_slope)*100:.0f}%)")
+    else:
+        weight_pct = 100 if iv_direction != "FLAT" else 0
+        st.markdown(f"**VEx Weight:** {weight_pct}% (slope disabled)")
 
-| GEX | VEx | IV | Result |
-|-----|-----|-----|--------|
-| + | + | Falling | **STRONG SUPPORT** |
-| + | + | Rising | Weak (conflicting) |
-| - | - | Falling | **STRONG RESISTANCE** |
-| - | - | Rising | Weak (conflicting) |
+    with st.expander("ℹ️ How to interpret"):
+        st.markdown("""
+**Bar Colors = Dealer Action Intensity**
+
+| Color | Meaning | Dealer Action |
+|-------|---------|---------------|
+| 🟩 **Bright Green** | Strong Support | Dealers BUY heavily |
+| 🟢 Pale Green | Weak Support | Dealers buy lightly |
+| 🟥 **Bright Red** | Strong Resistance | Dealers SELL heavily |
+| 🔴 Pale Red | Weak Resistance | Dealers sell lightly |
+| ⬜ Gray | Neutral | No directional flow |
+
+**When is it STRONG vs WEAK?**
+- **STRONG:** GEX and VEx agree (both push same direction)
+- **WEAK:** GEX and VEx conflict (cancel each other out)
+
+**How to Trade:**
+- Buy dips at **bright green** levels
+- Sell rallies at **bright red** levels
+- Be cautious at **pale** levels (mixed signals)
 """)
 
     # Find key levels

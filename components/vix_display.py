@@ -1,43 +1,86 @@
 """
 VIX Display Component
-Displays VIX chart and current level.
+Displays VIX chart and current level with slope-based trend.
 """
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from typing import Optional
 
-from utils.vix_tracker import VIXHistoryTracker
+from utils.vix_tracker import VIXHistoryTracker, VIXSlope
 
 
-def render_vix_section(current_vix: float, direction: str, change_pct: float, date_str: str):
+def render_vix_section(
+    current_vix: float,
+    direction: str,
+    change_pct: float,
+    date_str: str,
+    vix_slope: Optional[VIXSlope] = None
+):
     """
-    Render the VIX section with chart.
+    Render the VIX section with chart and slope indicator.
 
     Args:
         current_vix: Current VIX level
         direction: "RISING", "FALLING", or "FLAT"
-        change_pct: Percentage change
+        change_pct: Percentage change per hour
         date_str: Date in YYMMDD format for history
+        vix_slope: VIXSlope object with normalized slope
     """
     st.subheader("VIX")
 
     # Current metrics
     arrow = "↑" if direction == "RISING" else "↓" if direction == "FALLING" else "→"
-    color = "red" if direction == "RISING" else "green" if direction == "FALLING" else "gray"
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(
             "VIX Level",
             f"{current_vix:.2f}",
-            delta=f"{arrow} {change_pct:+.1f}%",
+            delta=f"{arrow} {change_pct:+.1f}%/hr",
             delta_color="inverse" if direction == "RISING" else "normal"
         )
     with col2:
-        st.metric("IV Direction", direction)
+        steepness = vix_slope.steepness if vix_slope else ""
+        st.metric(
+            "IV Trend",
+            f"{direction}",
+            delta=steepness if steepness and steepness != "FLAT" else None,
+            delta_color="inverse" if direction == "RISING" else "normal" if direction == "FALLING" else "off"
+        )
+    with col3:
+        if vix_slope:
+            # Show normalized slope as a visual indicator
+            slope_val = vix_slope.normalized_slope
+            _render_slope_gauge(slope_val)
+        else:
+            st.metric("Slope", "N/A")
 
     # Chart
     _render_vix_chart(date_str, current_vix, direction)
+
+
+def _render_slope_gauge(slope: float):
+    """Render a visual gauge for normalized slope (-1 to +1)."""
+    # Convert slope to percentage for progress bar (0 to 100)
+    # -1 = 0%, 0 = 50%, +1 = 100%
+    pct = int((slope + 1) * 50)
+    pct = max(0, min(100, pct))
+
+    # Color based on direction
+    if slope > 0.1:
+        color = "🔴"  # Rising IV = bearish
+        label = f"+{slope:.2f}"
+    elif slope < -0.1:
+        color = "🟢"  # Falling IV = bullish
+        label = f"{slope:.2f}"
+    else:
+        color = "⚪"
+        label = f"{slope:.2f}"
+
+    st.caption(f"Slope: {color} {label}")
+    st.progress(pct / 100)
+    st.caption("-1 ←— FLAT —→ +1")
 
 
 def _render_vix_chart(date_str: str, current_vix: float, direction: str, limit: int = 50):

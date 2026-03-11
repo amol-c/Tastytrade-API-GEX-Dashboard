@@ -26,7 +26,7 @@ from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
 from utils.market_analyzer import MarketAnalyzer
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
-from utils.vix_tracker import get_vix_price, determine_iv_direction, VIXHistoryTracker
+from utils.vix_tracker import get_vix_price, determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
 from utils.vanna_calculator import VannaCalculator
 from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
 from components.charm_display import render_charm_section
@@ -36,6 +36,14 @@ from components.greek_dominance import render_greek_dominance_timer
 from components.market_analysis_display import render_bias_help_expander, render_market_analysis_header
 from components.vex_display import render_vex_section
 from components.combined_flow_display import render_combined_flow_section
+from components.dashboard_layout import (
+    render_tier1_summary,
+    render_tier2_exposure,
+    render_tier3_flows,
+    render_tier4_structure,
+    render_key_levels_expander,
+    render_ai_prompt_expander,
+)
 
 st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
 
@@ -410,16 +418,19 @@ def main():
         )
 
         if st.session_state.auto_refresh:
-            refresh_interval = st.slider(
+            if 'refresh_interval' not in st.session_state:
+                st.session_state.refresh_interval = 60
+            st.session_state.refresh_interval = st.slider(
                 "Refresh interval (seconds)",
                 min_value=30,
                 max_value=300,
-                value=60,
+                value=st.session_state.refresh_interval,
                 step=10,
                 help="How often to refresh data"
             )
+            refresh_interval = st.session_state.refresh_interval
         else:
-            refresh_interval = 60
+            refresh_interval = st.session_state.get('refresh_interval', 60)
 
         st.divider()
 
@@ -490,18 +501,32 @@ def main():
                     st.session_state.option_count = len(option_data)
                     st.session_state.last_fetch_time = time.time()
 
-                    # Track VIX history (needed for IV direction before vanna calc)
+                    # Track VIX history and calculate slope-based IV direction
                     iv_direction = 'FLAT'
+                    iv_change_pct = 0.0
+                    vix_slope = None
                     if current_vix:
                         today_str = datetime.now().strftime("%y%m%d")
                         vix_tracker = VIXHistoryTracker(date_str=today_str)
-                        prev_vix = st.session_state.get('previous_vix')
-                        iv_direction, iv_change_pct = determine_iv_direction(current_vix, prev_vix)
-                        vix_tracker.add_record(current_vix, iv_direction, iv_change_pct)
-                        st.session_state.previous_vix = current_vix
+
+                        # Add current reading first
+                        vix_tracker.add_record(current_vix, 'PENDING', 0.0)
+
+                        # Calculate slope over past hour for trend detection
+                        vix_slope = vix_tracker.get_slope(window_minutes=60)
+                        iv_direction = vix_slope.direction
+                        iv_change_pct = vix_slope.pct_per_hour
+
+                        # Update the record with calculated direction
+                        if vix_tracker.history:
+                            vix_tracker.history[-1]['direction'] = iv_direction
+                            vix_tracker.history[-1]['change_pct'] = iv_change_pct
+                            vix_tracker._save_history()
+
                         st.session_state.current_vix = current_vix
                         st.session_state.iv_direction = iv_direction
                         st.session_state.iv_change_pct = iv_change_pct
+                        st.session_state.vix_slope = vix_slope
 
                     # Calculate Vanna (before market analysis so it can be included in bias)
                     vanna_calc = VannaCalculator()
@@ -603,7 +628,25 @@ def main():
         st.warning("⚠️ No GEX data available. Try fetching again or check different expiration.")
         return
 
-    # Display
+    # ============================================================
+    # TIER 1: SUMMARY
+    # ============================================================
+    if 'market_analysis' in st.session_state and st.session_state.market_analysis:
+        analysis = st.session_state.market_analysis
+        expiry = st.session_state.get('expiration', '')
+
+        render_tier1_summary()
+        render_greek_dominance_timer(expiry)
+        render_bias_help_expander()
+        render_market_analysis_header(analysis)
+        render_key_levels_expander(analysis)
+
+    # ============================================================
+    # TIER 2: EXPOSURE CHARTS
+    # ============================================================
+    render_tier2_exposure()
+
+    # GEX Chart
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -778,6 +821,8 @@ def main():
     # Combined Flow Section (GEX + VEx + IV)
     st.divider()
     iv_direction = st.session_state.get('iv_direction', 'FLAT')
+    vix_slope = st.session_state.get('vix_slope')
+    iv_slope = vix_slope.normalized_slope if vix_slope else 0.0
 
     # Convert gex_df to dict format
     gex_by_strike = {}
@@ -795,107 +840,30 @@ def main():
         symbol=st.session_state.symbol,
         spot_price=st.session_state.underlying_price,
         expiry=st.session_state.expiration,
+        iv_slope=iv_slope,
     )
 
-    # Volume and Open Interest Section
     # Aggregate data by strike (used for IV Skew and Volume/OI)
     strike_df = aggregate_by_strike(st.session_state.option_data)
 
-    # Sentiment Ratios Section
-    st.divider()
-    st.header("📊 Sentiment Ratios")
-
-    sentiment_calc = SentimentCalculator()
-    ratio_col1, ratio_col2 = st.columns(2)
-
-    with ratio_col1:
-        dealer_result = sentiment_calc.calculate_from_gex_metrics(metrics)
-        st.metric(
-            "Dealer Gamma Ratio",
-            f"{dealer_result.ratio:.2f}",
-            delta=dealer_result.label,
-            delta_color="normal" if dealer_result.ratio >= 0.5 else "inverse",
-            help="Call GEX / Total GEX. 1.0 = stabilizing, 0.0 = destabilizing, 0.5 = neutral."
-        )
-        st.progress(dealer_result.ratio)
-
-    with ratio_col2:
-        sentiment_result = sentiment_calc.calculate_from_strike_df(strike_df)
-        if sentiment_result:
-            st.metric(
-                "Active Sentiment (Customers)",
-                f"{sentiment_result.ratio:.2f}",
-                delta=sentiment_result.label,
-                delta_color="normal" if sentiment_result.ratio >= 0.5 else "inverse",
-                help="Call Volume / Total Volume. 1.0 = bullish, 0.0 = bearish, 0.5 = neutral."
-            )
-            st.progress(sentiment_result.ratio)
-        else:
-            st.metric("Active Sentiment", "N/A", help="No volume data available")
-
-    # Market Analysis Section
+    # ============================================================
+    # TIER 3: GREEK FLOWS (Time Series)
+    # ============================================================
     if 'market_analysis' in st.session_state and st.session_state.market_analysis:
-        st.divider()
-        st.header("🎯 Market Analysis")
-
         analysis = st.session_state.market_analysis
-
-        # Help expander and metrics from component
-        render_bias_help_expander()
-        render_market_analysis_header(analysis)
-
-        # Key levels
-        with st.expander("Key Levels", expanded=True):
-            level_col1, level_col2, level_col3, level_col4 = st.columns(4)
-            with level_col1:
-                gamma_flip = analysis.key_levels.gamma_flip
-                st.metric("Gamma Flip", f"${gamma_flip:,.0f}" if gamma_flip else "N/A")
-            with level_col2:
-                # Show gamma regime
-                if gamma_flip and analysis.current_price > gamma_flip:
-                    st.metric("Gamma Regime", "Positive", delta="Stabilizing")
-                else:
-                    st.metric("Gamma Regime", "Negative", delta="Destabilizing", delta_color="inverse")
-            with level_col3:
-                cw = analysis.key_levels.call_wall
-                st.metric("Call Wall", f"${cw:,.0f}" if cw else "N/A")
-            with level_col4:
-                pw = analysis.key_levels.put_wall
-                st.metric("Put Wall", f"${pw:,.0f}" if pw else "N/A")
-
-            # High Gamma Levels (within 10 strikes of current price)
-            st.caption("High Gamma Levels (within 10 strikes of current price)")
-            hg_col1, hg_col2, hg_col3, hg_col4 = st.columns(4)
-            with hg_col1:
-                hg_res1 = analysis.key_levels.hg_resistance_1
-                st.metric("HG Resist 1", f"${hg_res1:,.0f}" if hg_res1 else "N/A")
-            with hg_col2:
-                hg_res2 = analysis.key_levels.hg_resistance_2
-                st.metric("HG Resist 2", f"${hg_res2:,.0f}" if hg_res2 else "N/A")
-            with hg_col3:
-                hg_sup1 = analysis.key_levels.hg_support_1
-                st.metric("HG Support 1", f"${hg_sup1:,.0f}" if hg_sup1 else "N/A")
-            with hg_col4:
-                hg_sup2 = analysis.key_levels.hg_support_2
-                st.metric("HG Support 2", f"${hg_sup2:,.0f}" if hg_sup2 else "N/A")
-
-        # Greeks Flow Section (VIX, Vanna, Charm)
-        st.divider()
-        st.header("📊 Greeks Flow")
-
         expiry = st.session_state.get('expiration', '')
 
-        # Greek Dominance Timer
-        render_greek_dominance_timer(expiry)
+        render_tier3_flows()
         today_str = datetime.now().strftime("%y%m%d")
 
         # VIX Section
         current_vix = st.session_state.get('current_vix')
         iv_direction = st.session_state.get('iv_direction', 'FLAT')
         iv_change_pct = st.session_state.get('iv_change_pct', 0.0)
+        vix_slope = st.session_state.get('vix_slope')
 
         if current_vix:
-            render_vix_section(current_vix, iv_direction, iv_change_pct, today_str)
+            render_vix_section(current_vix, iv_direction, iv_change_pct, today_str, vix_slope)
         else:
             st.caption("VIX data not available")
 
@@ -917,14 +885,16 @@ def main():
         render_charm_section(analysis, expiry)
 
         # AI Prompt
-        with st.expander("AI Analysis Prompt"):
-            st.code(analysis.to_ai_prompt(), language="markdown")
-            st.caption("Copy this prompt and send to Claude or other AI for market assessment.")
+        render_ai_prompt_expander(analysis)
+
+    # ============================================================
+    # TIER 4: MARKET STRUCTURE
+    # ============================================================
+    render_tier4_structure()
 
     # IV Skew Section
     if not strike_df.empty and (strike_df['call_iv'].notna().any() or strike_df['put_iv'].notna().any()):
-        st.divider()
-        st.header("📈 Implied Volatility Skew")
+        st.subheader("📈 Implied Volatility Skew")
 
         fig_iv = go.Figure()
 
@@ -981,8 +951,7 @@ def main():
 
         st.plotly_chart(fig_iv, width='stretch')
 
-    st.divider()
-    st.header("📊 Volume & Open Interest Analysis")
+    st.subheader("📊 Volume & Open Interest")
 
     if not strike_df.empty:
         # Two columns for OI and Volume charts
@@ -1114,10 +1083,52 @@ def main():
             top_pc.columns = ['Strike', 'P/C Ratio (OI)', 'P/C Ratio (Vol)', 'Total OI']
             st.dataframe(top_pc, hide_index=True, width='stretch')
 
-    # Auto-refresh logic
-    if st.session_state.auto_refresh:
-        time.sleep(1)  # Small delay before rerun
-        st.rerun()
+    # Sentiment Ratios
+    st.subheader("📊 Sentiment Ratios")
+
+    sentiment_calc = SentimentCalculator()
+    ratio_col1, ratio_col2 = st.columns(2)
+
+    with ratio_col1:
+        dealer_result = sentiment_calc.calculate_from_gex_metrics(metrics)
+        st.metric(
+            "Dealer Gamma Ratio",
+            f"{dealer_result.ratio:.2f}",
+            delta=dealer_result.label,
+            delta_color="normal" if dealer_result.ratio >= 0.5 else "inverse",
+            help="Call GEX / Total GEX. 1.0 = stabilizing, 0.0 = destabilizing, 0.5 = neutral."
+        )
+        st.progress(dealer_result.ratio)
+
+    with ratio_col2:
+        sentiment_result = sentiment_calc.calculate_from_strike_df(strike_df)
+        if sentiment_result:
+            st.metric(
+                "Active Sentiment (Customers)",
+                f"{sentiment_result.ratio:.2f}",
+                delta=sentiment_result.label,
+                delta_color="normal" if sentiment_result.ratio >= 0.5 else "inverse",
+                help="Call Volume / Total Volume. 1.0 = bullish, 0.0 = bearish, 0.5 = neutral."
+            )
+            st.progress(sentiment_result.ratio)
+        else:
+            st.metric("Active Sentiment", "N/A", help="No volume data available")
+
+    # Auto-refresh logic - only rerun when it's time to fetch, not constantly
+    if st.session_state.auto_refresh and st.session_state.last_fetch_time > 0:
+        elapsed = time.time() - st.session_state.last_fetch_time
+        # Get refresh interval from session state or default
+        refresh_interval = st.session_state.get('refresh_interval', 60)
+        time_until_refresh = refresh_interval - elapsed
+
+        if time_until_refresh <= 0:
+            # Time to refresh - rerun immediately
+            st.rerun()
+        else:
+            # Schedule rerun for when refresh is due (max 30 seconds to avoid long waits)
+            wait_time = min(time_until_refresh, 30)
+            time.sleep(wait_time)
+            st.rerun()
 
 
 if __name__ == "__main__":
