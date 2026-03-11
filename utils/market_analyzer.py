@@ -32,6 +32,14 @@ class CharmFlowAnalysis:
 
 
 @dataclass
+class VannaFlowAnalysis:
+    """Vanna flow analysis results."""
+    direction: str  # 'BUY', 'SELL', 'NEUTRAL'
+    net_vanna: Optional[float]  # None if data unavailable
+    iv_direction: str  # 'RISING', 'FALLING', 'FLAT'
+
+
+@dataclass
 class SentimentAnalysis:
     """Sentiment analysis results."""
     dealer_stance: str  # 'STABILIZING', 'DESTABILIZING', 'NEUTRAL'
@@ -56,11 +64,13 @@ class MarketAnalysis:
     # Component analyses
     key_levels: KeyLevels
     charm_flow: CharmFlowAnalysis
+    vanna_flow: VannaFlowAnalysis
     sentiment: SentimentAnalysis
 
     # Raw metrics
     gex_metrics: Dict
     charm_metrics: Dict = field(default_factory=dict)
+    vanna_metrics: Dict = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
@@ -85,6 +95,11 @@ class MarketAnalysis:
             'charm_flow': {
                 'direction': self.charm_flow.direction,
                 'net_charm': self.charm_flow.net_charm,
+            },
+            'vanna_flow': {
+                'direction': self.vanna_flow.direction,
+                'net_vanna': self.vanna_flow.net_vanna,
+                'iv_direction': self.vanna_flow.iv_direction,
             },
             'sentiment': {
                 'dealer_stance': self.sentiment.dealer_stance,
@@ -231,6 +246,7 @@ class MarketAnalyzer:
                 - gex_metrics: dict
                 - options_data: dict
                 - volume_data: dict
+                - vanna_data: dict (optional) with net_vanna, flow_direction, iv_direction
 
         Returns:
             MarketAnalysis object
@@ -241,6 +257,7 @@ class MarketAnalyzer:
         gex_metrics = market_data.get('gex_metrics', {})
         options_data = market_data.get('options_data', {})
         volume_data = market_data.get('volume_data', {})
+        vanna_data = market_data.get('vanna_data', {})
 
         # Calculate sentiment
         dealer_result = self.sentiment_calc.calculate_dealer_gamma_ratio(
@@ -266,15 +283,20 @@ class MarketAnalyzer:
         # Build charm flow analysis
         charm_flow = self._build_charm_flow(charm_summary)
 
+        # Build vanna flow analysis
+        vanna_flow = self._build_vanna_flow(vanna_data)
+
         # Build sentiment analysis
         sentiment = self._build_sentiment(dealer_result, customer_ratio)
 
-        # Calculate overall bias
+        # Calculate overall bias with time-based Greek weighting
         bias_score = self._calculate_bias_score(
             charm_flow=charm_flow,
+            vanna_flow=vanna_flow,
             sentiment=sentiment,
             spot_price=spot_price,
             gamma_flip=key_levels.gamma_flip,
+            expiry=expiry,
         )
 
         bias, confidence = self._score_to_bias(bias_score)
@@ -289,6 +311,7 @@ class MarketAnalyzer:
             confidence=confidence,
             key_levels=key_levels,
             charm_flow=charm_flow,
+            vanna_flow=vanna_flow,
             sentiment=sentiment,
             gex_metrics=gex_metrics,
         )
@@ -330,6 +353,18 @@ class MarketAnalyzer:
             net_charm=net_charm,
         )
 
+    def _build_vanna_flow(self, vanna_data: Dict) -> VannaFlowAnalysis:
+        """Build vanna flow analysis from vanna data."""
+        direction = vanna_data.get('flow_direction', 'NEUTRAL')
+        net_vanna = vanna_data.get('net_vanna')
+        iv_direction = vanna_data.get('iv_direction', 'FLAT')
+
+        return VannaFlowAnalysis(
+            direction=direction,
+            net_vanna=net_vanna,
+            iv_direction=iv_direction,
+        )
+
     def _build_sentiment(self, dealer_result, customer_ratio: float) -> SentimentAnalysis:
         """Build sentiment analysis."""
         # Dealer stance
@@ -355,15 +390,55 @@ class MarketAnalyzer:
             customer_ratio=customer_ratio,
         )
 
+    def _get_greek_weights(self, expiry: str) -> tuple:
+        """
+        Get time-based weights for Vanna vs Charm.
+
+        Returns (vanna_weight, charm_weight) as percentages that sum to 1.0
+
+        Timeline:
+        - >5 hours: Vanna 70%, Charm 30%
+        - 3-5 hours: Vanna 50%, Charm 50%
+        - 1-3 hours: Vanna 30%, Charm 70%
+        - <1 hour: Vanna 10%, Charm 90%
+        """
+        try:
+            expiry_date = datetime.strptime(expiry, "%y%m%d")
+            expiry_datetime = expiry_date.replace(hour=16, minute=0)
+            now = datetime.now()
+            time_remaining = expiry_datetime - now
+            hours_remaining = time_remaining.total_seconds() / 3600
+
+            if hours_remaining <= 0:
+                return (0.0, 1.0)  # Expired, charm only
+            elif hours_remaining < 1:
+                return (0.10, 0.90)
+            elif hours_remaining < 3:
+                return (0.30, 0.70)
+            elif hours_remaining < 5:
+                return (0.50, 0.50)
+            else:
+                return (0.70, 0.30)
+        except Exception:
+            return (0.50, 0.50)  # Default to equal weight
+
     def _calculate_bias_score(
         self,
         charm_flow: CharmFlowAnalysis,
+        vanna_flow: VannaFlowAnalysis,
         sentiment: SentimentAnalysis,
         spot_price: float,
         gamma_flip: Optional[float],
+        expiry: str,
     ) -> float:
         """
         Calculate overall bias score (0-100).
+
+        Vanna and Charm are weighted based on time to expiry:
+        - Morning (>5h): Vanna dominates (70/30)
+        - Midday (3-5h): Equal weight (50/50)
+        - Afternoon (1-3h): Charm dominates (30/70)
+        - Final hour (<1h): Charm explosion (10/90)
 
         0 = Very Bearish
         50 = Neutral
@@ -371,11 +446,29 @@ class MarketAnalyzer:
         """
         score = 50.0  # Start neutral
 
-        # Charm flow contribution (±20 points max)
+        # Get time-based weights for Greeks
+        vanna_weight, charm_weight = self._get_greek_weights(expiry)
+
+        # Max points for Greeks flow combined = 20
+        max_greek_points = 20
+
+        # Vanna flow contribution (weighted)
+        vanna_points = 0
+        if vanna_flow.direction == 'BUY':
+            vanna_points = max_greek_points
+        elif vanna_flow.direction == 'SELL':
+            vanna_points = -max_greek_points
+
+        # Charm flow contribution (weighted)
+        charm_points = 0
         if charm_flow.direction == 'BUY':
-            score += 20
+            charm_points = max_greek_points
         elif charm_flow.direction == 'SELL':
-            score -= 20
+            charm_points = -max_greek_points
+
+        # Apply time-based weighting
+        greek_contribution = (vanna_points * vanna_weight) + (charm_points * charm_weight)
+        score += greek_contribution
 
         # Dealer stance contribution (±15 points max)
         # Use ratio directly: 0.5 = neutral, >0.5 = stabilizing = bullish

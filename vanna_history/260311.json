@@ -1,0 +1,29 @@
+[
+  {
+    "timestamp": "2026-03-10T20:17:19.447703",
+    "expiry": "260311",
+    "spot_price": 6781.48,
+    "net_vanna": -32522374.888174105,
+    "es_futures": -95.9,
+    "flow_direction": "NEUTRAL",
+    "iv_direction": "FLAT"
+  },
+  {
+    "timestamp": "2026-03-10T20:18:25.593038",
+    "expiry": "260311",
+    "spot_price": 6781.48,
+    "net_vanna": -31130845.85370365,
+    "es_futures": -91.8,
+    "flow_direction": "NEUTRAL",
+    "iv_direction": "FLAT"
+  },
+  {
+    "timestamp": "2026-03-10T21:09:30.443136",
+    "expiry": "260311",
+    "spot_price": 6781.48,
+    "net_vanna": -30836208.719688866,
+    "es_futures": -90.9,
+    "flow_direction": "NEUTRAL",
+    "iv_direction": "FLAT"
+  }
+]

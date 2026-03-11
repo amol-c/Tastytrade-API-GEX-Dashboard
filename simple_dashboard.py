@@ -26,7 +26,16 @@ from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
 from utils.market_analyzer import MarketAnalyzer
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
+from utils.vix_tracker import get_vix_price, determine_iv_direction, VIXHistoryTracker
+from utils.vanna_calculator import VannaCalculator
+from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
 from components.charm_display import render_charm_section
+from components.vix_display import render_vix_section
+from components.vanna_display import render_vanna_section_with_price
+from components.greek_dominance import render_greek_dominance_timer
+from components.market_analysis_display import render_bias_help_expander, render_market_analysis_header
+from components.vex_display import render_vex_section
+from components.combined_flow_display import render_combined_flow_section
 
 st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
 
@@ -200,6 +209,7 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
                     if event_type == "Greeks":
                         data[symbol]["gamma"] = item.get("gamma")
                         data[symbol]["delta"] = item.get("delta")
+                        data[symbol]["vega"] = item.get("vega")
                         data[symbol]["iv"] = item.get("volatility")
                     elif event_type == "Summary":
                         data[symbol]["oi"] = item.get("openInterest")
@@ -214,8 +224,8 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
 
 
 
-def run_market_analysis(symbol, price, expiration, option_data, gex_metrics):
-    """Run unified market analysis combining GEX, charm, and sentiment."""
+def run_market_analysis(symbol, price, expiration, option_data, gex_metrics, vanna_data=None):
+    """Run unified market analysis combining GEX, charm, vanna, and sentiment."""
     from utils.gex_calculator import parse_option_symbol
 
     # Build options data with required fields
@@ -254,6 +264,7 @@ def run_market_analysis(symbol, price, expiration, option_data, gex_metrics):
             'total_call_volume': total_call_vol,
             'total_put_volume': total_put_vol,
         },
+        'vanna_data': vanna_data or {},
     })
 
 
@@ -453,6 +464,9 @@ def main():
                     # Fetch option data
                     option_data = fetch_option_data(ws, option_symbols, wait_seconds=20)
 
+                    # Fetch VIX before closing WebSocket
+                    current_vix = get_vix_price(ws, timeout=3)
+
                     ws.close()
 
                     # Calculate GEX
@@ -475,8 +489,51 @@ def main():
                     st.session_state.expiration = expiration
                     st.session_state.option_count = len(option_data)
                     st.session_state.last_fetch_time = time.time()
+
+                    # Track VIX history (needed for IV direction before vanna calc)
+                    iv_direction = 'FLAT'
+                    if current_vix:
+                        today_str = datetime.now().strftime("%y%m%d")
+                        vix_tracker = VIXHistoryTracker(date_str=today_str)
+                        prev_vix = st.session_state.get('previous_vix')
+                        iv_direction, iv_change_pct = determine_iv_direction(current_vix, prev_vix)
+                        vix_tracker.add_record(current_vix, iv_direction, iv_change_pct)
+                        st.session_state.previous_vix = current_vix
+                        st.session_state.current_vix = current_vix
+                        st.session_state.iv_direction = iv_direction
+                        st.session_state.iv_change_pct = iv_change_pct
+
+                    # Calculate Vanna (before market analysis so it can be included in bias)
+                    vanna_calc = VannaCalculator()
+                    vanna_result = vanna_calc.calculate_current_vanna(
+                        options_data=option_data,
+                        spot=price,
+                        expiry_str=expiration,
+                        iv_direction=iv_direction,
+                    )
+
+                    # Prepare vanna data for market analysis
+                    vanna_data = None
+                    if vanna_result:
+                        st.session_state.vanna_result = vanna_result
+                        vanna_data = {
+                            'net_vanna': vanna_result.net_vanna,
+                            'flow_direction': vanna_result.flow_direction.value,
+                            'iv_direction': iv_direction,
+                        }
+                        # Track vanna history
+                        vanna_tracker = VannaHistoryTracker(expiry=expiration)
+                        vanna_tracker.add_record(
+                            spot_price=price,
+                            net_vanna=vanna_result.net_vanna,
+                            flow_direction=vanna_result.flow_direction.value,
+                            iv_direction=iv_direction,
+                            expiry=expiration,
+                        )
+
+                    # Run market analysis with vanna included
                     st.session_state.market_analysis = run_market_analysis(
-                        symbol, price, expiration, option_data, calc.get_total_gex_metrics()
+                        symbol, price, expiration, option_data, calc.get_total_gex_metrics(), vanna_data
                     )
 
                     # Track charm history
@@ -700,6 +757,46 @@ def main():
             )
             st.caption(flip_status)
 
+    # VEx (Vanna Exposure) Section
+    st.divider()
+    vanna_calc = VannaCalculator()
+    strike_vex = vanna_calc.calculate_vex_by_strike(
+        options_data=st.session_state.option_data,
+        spot=st.session_state.underlying_price,
+        expiry_str=st.session_state.expiration,
+    )
+    vex_metrics = vanna_calc.get_vex_metrics(strike_vex) if strike_vex else {}
+
+    render_vex_section(
+        strike_vex=strike_vex,
+        vex_metrics=vex_metrics,
+        symbol=st.session_state.symbol,
+        spot_price=st.session_state.underlying_price,
+        expiry=st.session_state.expiration,
+    )
+
+    # Combined Flow Section (GEX + VEx + IV)
+    st.divider()
+    iv_direction = st.session_state.get('iv_direction', 'FLAT')
+
+    # Convert gex_df to dict format
+    gex_by_strike = {}
+    for _, row in gex_df.iterrows():
+        gex_by_strike[row['strike']] = {
+            'call_gex': row['call_gex'],
+            'put_gex': row['put_gex'],
+            'net_gex': row['net_gex'],
+        }
+
+    render_combined_flow_section(
+        gex_by_strike=gex_by_strike,
+        vex_by_strike=strike_vex,
+        iv_direction=iv_direction,
+        symbol=st.session_state.symbol,
+        spot_price=st.session_state.underlying_price,
+        expiry=st.session_state.expiration,
+    )
+
     # Volume and Open Interest Section
     # Aggregate data by strike (used for IV Skew and Volume/OI)
     strike_df = aggregate_by_strike(st.session_state.option_data)
@@ -742,30 +839,10 @@ def main():
         st.header("🎯 Market Analysis")
 
         analysis = st.session_state.market_analysis
-        bias_emoji = {'BULLISH': '🟢', 'BEARISH': '🔴', 'NEUTRAL': '🟡'}
-        conf_emoji = {'HIGH': '🔥', 'MEDIUM': '⚡', 'LOW': '💤'}
 
-        # Main bias display
-        bias_col1, bias_col2, bias_col3 = st.columns(3)
-        with bias_col1:
-            st.metric(
-                "Market Bias",
-                f"{bias_emoji.get(analysis.bias, '')} {analysis.bias}",
-                delta=f"Score: {analysis.bias_score:.0f}/100",
-                delta_color="normal" if analysis.bias == 'BULLISH' else "inverse" if analysis.bias == 'BEARISH' else "off"
-            )
-        with bias_col2:
-            st.metric(
-                "Confidence",
-                f"{conf_emoji.get(analysis.confidence, '')} {analysis.confidence}"
-            )
-        with bias_col3:
-            st.metric(
-                "Charm Flow",
-                analysis.charm_flow.direction,
-                delta="UP pressure" if analysis.charm_flow.direction == 'BUY' else "DOWN pressure" if analysis.charm_flow.direction == 'SELL' else "Neutral",
-                delta_color="normal" if analysis.charm_flow.direction == 'BUY' else "inverse" if analysis.charm_flow.direction == 'SELL' else "off"
-            )
+        # Help expander and metrics from component
+        render_bias_help_expander()
+        render_market_analysis_header(analysis)
 
         # Key levels
         with st.expander("Key Levels", expanded=True):
@@ -802,8 +879,41 @@ def main():
                 hg_sup2 = analysis.key_levels.hg_support_2
                 st.metric("HG Support 2", f"${hg_sup2:,.0f}" if hg_sup2 else "N/A")
 
-        # Charm Flow with ES Futures Equivalent
+        # Greeks Flow Section (VIX, Vanna, Charm)
+        st.divider()
+        st.header("📊 Greeks Flow")
+
         expiry = st.session_state.get('expiration', '')
+
+        # Greek Dominance Timer
+        render_greek_dominance_timer(expiry)
+        today_str = datetime.now().strftime("%y%m%d")
+
+        # VIX Section
+        current_vix = st.session_state.get('current_vix')
+        iv_direction = st.session_state.get('iv_direction', 'FLAT')
+        iv_change_pct = st.session_state.get('iv_change_pct', 0.0)
+
+        if current_vix:
+            render_vix_section(current_vix, iv_direction, iv_change_pct, today_str)
+        else:
+            st.caption("VIX data not available")
+
+        # Vanna section
+        vanna_result = st.session_state.get('vanna_result')
+        if vanna_result:
+            render_vanna_section_with_price(
+                net_vanna=vanna_result.net_vanna,
+                flow_direction=vanna_result.flow_direction.value,
+                spot_price=analysis.current_price,
+                expiry=expiry,
+                iv_direction=iv_direction,
+            )
+        else:
+            st.subheader("Vanna Flow")
+            st.caption("Vanna data not available - need delta/vega from API")
+
+        # Charm section
         render_charm_section(analysis, expiry)
 
         # AI Prompt
