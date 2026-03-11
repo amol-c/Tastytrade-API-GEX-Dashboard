@@ -4,6 +4,9 @@ tasty_token.json
 streamer_token.json
 streamer_token.txt
 
+vanna_history/
+vix_history/
+charm_history/
 # Python
 *.pyc
 __pycache__/
