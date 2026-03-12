@@ -7,11 +7,15 @@ This file is the entry point for the packaged desktop application.
 Usage:
     python desktop_app.py
 """
-import sys
 import os
+import socket
+import subprocess
+import sys
 import threading
 import time
-import socket
+import traceback
+
+import webview
 
 
 def get_app_path():
@@ -69,7 +73,6 @@ def run_streamlit_server_thread(port, app_path):
         )
     except Exception as e:
         print(f"Streamlit server error: {e}")
-        import traceback
         traceback.print_exc()
 
 
@@ -89,7 +92,6 @@ def start_streamlit_thread(port):
 
 def start_streamlit_subprocess(port):
     """Start Streamlit server as subprocess (for development)."""
-    import subprocess
     app_path = get_app_path()
     dashboard_path = os.path.join(app_path, "app.py")
 
@@ -128,12 +130,6 @@ def wait_for_server(port, timeout=30):
 
 def main():
     """Main entry point for desktop application."""
-    try:
-        import webview
-    except ImportError:
-        print("Error: pywebview is not installed.")
-        print("Install it with: pip install pywebview")
-        sys.exit(1)
 
     # Find available port
     port = find_free_port()

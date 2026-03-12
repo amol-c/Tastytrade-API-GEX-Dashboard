@@ -3,19 +3,54 @@ Simple GEX Dashboard - Direct WebSocket approach (no background threads)
 Fetches data once when you click "Fetch Data", then displays it
 Works on weekends with Friday's closing data
 """
-import streamlit as st
 import json
-import time
 import logging
-import sys
+import math
 import os
+import ssl
+import sys
+import tempfile
+import time
+import traceback
 from datetime import datetime, timedelta
+
+import certifi
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from websocket import create_connection
+
+from components.account_settings import render_account_settings
+from components.charm_display import render_charm_section
+from components.combined_flow_display import render_combined_flow_section
+from components.dashboard_layout import (
+    render_ai_prompt_expander,
+    render_key_levels_expander,
+    render_tier1_summary,
+    render_tier2_exposure,
+    render_tier3_flows,
+    render_tier4_structure,
+)
+from components.greek_dominance import render_greek_dominance_timer
+from components.market_analysis_display import render_bias_help_expander, render_market_analysis_header
+from components.sentiment_display import render_sentiment_section
+from components.vanna_display import render_vanna_section_with_price
+from components.vex_display import render_vex_section
+from components.vix_display import render_vix_section
+from utils.auth import ensure_streamer_token
+from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
+from utils.gex_calculator import GEXCalculator
+from utils.market_analyzer import MarketAnalyzer
+from utils.sentiment_calculator import SentimentCalculator
+from utils.vanna_calculator import VannaCalculator
+from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
+from utils.vix_tracker import get_vix_price, determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
+
 
 # Configure logging - use temp directory for frozen apps
 def _get_log_path():
     if getattr(sys, 'frozen', False):
         # Running as frozen app - use temp directory
-        import tempfile
         log_dir = os.path.join(tempfile.gettempdir(), 'gex_dashboard')
         os.makedirs(log_dir, exist_ok=True)
         return os.path.join(log_dir, 'dashboard.log')
@@ -33,34 +68,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-from websocket import create_connection
-import pandas as pd
-import plotly.graph_objects as go
-from utils.auth import ensure_streamer_token
-from utils.gex_calculator import GEXCalculator
-from utils.sentiment_calculator import SentimentCalculator
-from utils.market_analyzer import MarketAnalyzer
-from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
-from utils.vix_tracker import get_vix_price, determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
-from utils.vanna_calculator import VannaCalculator
-from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
-from components.charm_display import render_charm_section
-from components.vix_display import render_vix_section
-from components.vanna_display import render_vanna_section_with_price
-from components.greek_dominance import render_greek_dominance_timer
-from components.market_analysis_display import render_bias_help_expander, render_market_analysis_header
-from components.vex_display import render_vex_section
-from components.combined_flow_display import render_combined_flow_section
-from components.sentiment_display import render_sentiment_section
-from components.account_settings import render_account_settings
-from components.dashboard_layout import (
-    render_tier1_summary,
-    render_tier2_exposure,
-    render_tier3_flows,
-    render_tier4_structure,
-    render_key_levels_expander,
-    render_ai_prompt_expander,
-)
 
 # Preset symbol configuration
 PRESET_SYMBOLS = {
@@ -77,9 +84,6 @@ DXFEED_URL = "wss://tasty-openapi-ws.dxfeed.com/realtime"
 
 def connect_websocket(token):
     """Connect to dxFeed WebSocket"""
-    import ssl
-    import certifi
-
     # Create SSL context with certifi certificates (fixes frozen app SSL issues)
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     ws = create_connection(DXFEED_URL, timeout=10, sslopt={"context": ssl_context})
@@ -321,8 +325,6 @@ def aggregate_by_strike(option_data):
             }
 
         # Convert to numbers (might be strings from WebSocket or NaN)
-        import math
-
         try:
             oi = float(data.get('oi', 0) or 0)
             if math.isnan(oi):
@@ -605,7 +607,6 @@ def main():
 
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
-                    import traceback
                     st.code(traceback.format_exc())
 
         st.divider()
