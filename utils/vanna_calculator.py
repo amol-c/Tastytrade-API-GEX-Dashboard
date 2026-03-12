@@ -143,26 +143,33 @@ class VannaCalculator:
         return vanna_exposure
 
     def calculate_tte_from_expiry(self, expiry_str: str) -> float:
-        """Calculate time to expiry in years from YYMMDD string, using UTC for timezone safety."""
-        from datetime import datetime, timezone
+        """Calculate time to expiry in years from YYMMDD string, using US/Eastern for market hours."""
+        from datetime import datetime
+        import pytz
 
-        # Parse expiry date
         try:
-            expiry_date = datetime.strptime(expiry_str, "%y%m%d")
+            # Parse expiry date (standard YYMMDD)
+            expiry_date_naive = datetime.strptime(expiry_str, "%y%m%d")
             
-            # Market close is 16:00 ET. 
-            # Approx 21:00 UTC (handles both EST/EDT within an hour of error, which is fine for TTE).
-            expiry_utc = datetime(expiry_date.year, expiry_date.month, expiry_date.day, 21, 0, tzinfo=timezone.utc)
+            # Localize to NY time
+            ny_tz = pytz.timezone('US/Eastern')
+            
+            # Set target as 4:00 PM (16:00) on the day of expiry in NY
+            expiry_ny = ny_tz.localize(datetime(
+                expiry_date_naive.year, 
+                expiry_date_naive.month, 
+                expiry_date_naive.day, 
+                16, 0, 0
+            ))
 
-            # Current time in UTC
-            now_utc = datetime.now(timezone.utc)
+            # Current time in NY
+            now_ny = datetime.now(ny_tz)
             
-            time_remaining = expiry_utc - now_utc
+            time_remaining = expiry_ny - now_ny
             seconds_remaining = time_remaining.total_seconds()
 
-            # If it's expired or very close, return a tiny minimum to avoid 0 VEx for 0DTE
             if seconds_remaining <= 0:
-                # If it's still "today", provide a tiny floor so charts don't disappear instantly at 4pm
+                # If we are past 4pm NY, it's technically expired
                 return 0.0
 
             trading_seconds_per_year = 252 * 6.5 * 3600

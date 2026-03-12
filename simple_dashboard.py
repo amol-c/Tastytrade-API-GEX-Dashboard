@@ -8,6 +8,7 @@ import json
 import time
 import logging
 from datetime import datetime, timedelta
+import pytz
 
 import os
 os.makedirs('logs', exist_ok=True)
@@ -232,8 +233,10 @@ def main():
         st.subheader("🔌 Data Provider")
         provider = st.radio("Select Source", ["Tradier API (REST)", "Tastytrade (dxFeed WebSocket)"], help="Choose your API backend")
         st.divider()
-        # Default expiration to today's date
-        default_exp = datetime.now().strftime("%y%m%d")
+        # Default expiration to today's date in New York
+        ny_tz = pytz.timezone('US/Eastern')
+        ny_now = datetime.now(ny_tz)
+        default_exp = ny_now.strftime("%y%m%d")
 
         expiration = st.text_input(
             "Expiration (YYMMDD)",
@@ -689,10 +692,14 @@ def main():
         expiry_str=st.session_state.expiration,
     )
     vex_metrics = vanna_calc.get_vex_metrics(strike_vex) if strike_vex else {}
+    
     if not strike_vex:
         # Diagnostic help
         raw_count = len(st.session_state.option_data) if 'option_data' in st.session_state else 0
         tte = vanna_calc.calculate_tte_from_expiry(st.session_state.expiration)
+        ny_tz = pytz.timezone('US/Eastern')
+        ny_now = datetime.now(ny_tz)
+        
         with st.expander("🔍 VEx Diagnostic (Hidden)"):
             st.write(f"Raw option data count: {raw_count}")
             if raw_count > 0:
@@ -700,6 +707,7 @@ def main():
                 st.write(f"Sample Greek values: Δ={sample_opt.get('delta')}, V={sample_opt.get('vega')}, γ={sample_opt.get('gamma')}, OI={sample_opt.get('oi')}")
             st.write(f"Expiration string: {st.session_state.expiration}")
             st.write(f"Calculated TTE (years): {tte:.6f}")
+            st.write(f"Market Time (NY): {ny_now.strftime('%Y-%m-%d %H:%M:%S')} ET")
             st.write(f"Spot price: {st.session_state.underlying_price}")
 
     render_vex_section(
