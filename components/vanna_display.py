@@ -123,7 +123,7 @@ def _render_vanna_chart(current_es, expiry: str, limit: int = 50):
 
     st.caption("ES Contracts Over Time")
     hist_df = pd.DataFrame(history)
-    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], utc=True)
+    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], format='ISO8601', utc=True)
 
     # Color based on current or last ES value
     if current_es is not None:

@@ -93,7 +93,7 @@ def _render_vix_chart(date_str: str, current_vix: float, direction: str, limit: 
         return
 
     hist_df = pd.DataFrame(history)
-    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], utc=True)
+    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], format='ISO8601', utc=True)
 
     # Color based on current direction
     line_color = 'red' if direction == "RISING" else 'green' if direction == "FALLING" else 'gray'

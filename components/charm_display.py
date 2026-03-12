@@ -78,7 +78,7 @@ def _render_history_chart(current_es, expiry: str, limit=50):
 
     st.caption("ES Contracts Over Time")
     hist_df = pd.DataFrame(history)
-    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], utc=True)
+    hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'], format='ISO8601', utc=True)
 
     # Determine color based on current or last known direction
     if current_es is not None:
