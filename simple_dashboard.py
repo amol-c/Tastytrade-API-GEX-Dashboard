@@ -23,7 +23,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 import pandas as pd
 import plotly.graph_objects as go
-from utils.tradier_api import get_underlying_price, get_vix_price, fetch_option_data
+from utils.tradier_api import get_underlying_price as tradier_get_underlying, get_vix_price as tradier_get_vix, fetch_option_data as tradier_fetch_options
+from utils.websocket_manager import connect_websocket as dxfeed_connect, fetch_option_data as dxfeed_fetch_options, get_underlying_price as dxfeed_get_underlying, get_vix_price as dxfeed_get_vix
+from utils.auth import ensure_streamer_token
+
 from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
 from utils.market_analyzer import MarketAnalyzer
@@ -225,6 +228,10 @@ def main():
             default_price = st.number_input("Fallback Price", min_value=1.0, max_value=100000.0, value=100.0,
                                           help="Used if live price unavailable")
 
+        st.divider()
+        st.subheader("🔌 Data Provider")
+        provider = st.radio("Select Source", ["Tradier API (REST)", "Tastytrade (dxFeed WebSocket)"], help="Choose your API backend")
+        st.divider()
         # Default expiration to today's date
         default_exp = datetime.now().strftime("%y%m%d")
 
@@ -278,20 +285,62 @@ def main():
         if fetch_triggered:
             with st.spinner(f"Fetching {symbol} data..."):
                 try:
-                    # Get underlying price
-                    st.info(f"📊 Getting {symbol} price...")
-                    price = get_underlying_price(symbol)
-
-                    if not price:
-                        price = default_price
-                        st.warning(f"⚠️ Using fallback price: ${price}")
+                    # Route based on Provider
+                    if provider == "Tradier API (REST)":
+                        st.info(f"📊 Getting {symbol} price via Tradier...")
+                        price = tradier_get_underlying(symbol)
+                        
+                        if not price:
+                            price = default_price
+                            st.warning(f"⚠️ Using fallback price: ${price}")
+                        else:
+                            st.success(f"✅ {symbol} Price: ${price:,.2f}")
+                            
+                        st.info(f"📡 Fetching option chain via Tradier...")
+                        raw_option_data = tradier_fetch_options(symbol, expiration)
+                        current_vix = tradier_get_vix()
+                        
                     else:
-                        st.success(f"✅ {symbol} Price: ${price:,.2f}")
+                        # Tastytrade / dxFeed Flow
+                        streamer_token = ensure_streamer_token()
+                        if not streamer_token:
+                            st.error("Failed to authenticate with Tastytrade. Check .env config.")
+                            st.stop()
+                            
+                        ws = dxfeed_connect(streamer_token)
+                        if not ws:
+                            st.error("Failed to connect to dxFeed WebSocket.")
+                            st.stop()
+                            
+                        st.info(f"📊 Getting {symbol} price via dxFeed...")
+                        price = dxfeed_get_underlying(ws, symbol)
+                        
+                        if not price:
+                            price = default_price
+                            st.warning(f"⚠️ Using fallback price: ${price}")
+                        else:
+                            st.success(f"✅ {symbol} Price: ${price:,.2f}")
+                            
+                        # Generate option symbols (Old behavior required specific symbols)
+                        center_strike = round(price / increment) * increment
+                        strikes = []
+                        for i in range(-strikes_down, strikes_up + 1):
+                            strikes.append(center_strike + (i * increment))
+                            
+                        option_symbols = []
+                        for strike in strikes:
+                            if strike == int(strike):
+                                strike_str = str(int(strike))
+                            else:
+                                strike_str = str(strike)
+                            option_symbols.append(f".{option_prefix}{expiration}C{strike_str}")
+                            option_symbols.append(f".{option_prefix}{expiration}P{strike_str}")
+                            
+                        st.info(f"📡 Fetching options via dxFeed...")
+                        raw_option_data = dxfeed_fetch_options(ws, option_symbols, wait_seconds=15)
+                        current_vix = dxfeed_get_vix(ws)
+                        ws.close()
 
-                    st.info(f"📡 Fetching option chain...")
-
-                    # Fetch option data
-                    raw_option_data = fetch_option_data(symbol, expiration)
                     
                     # Filter option_data by strike
                     center_strike = round(price / increment) * increment
@@ -305,8 +354,7 @@ def main():
                         if parsed and lower_bound <= parsed['strike'] <= upper_bound:
                             option_data[sym] = data
 
-                    # Fetch VIX
-                    current_vix = get_vix_price()
+                    # VIX already fetched in routing block
 
                     # Calculate GEX
                     calc = GEXCalculator()
