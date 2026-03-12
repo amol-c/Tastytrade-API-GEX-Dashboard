@@ -398,3 +398,174 @@ if __name__ == "__main__":
         ws_manager.stop()
 
     print("\n✅ Test complete!")
+
+
+# --- EXPORTED LEGACY FUNCTIONS FOR SIMPLE DASHBOARD ---
+def connect_websocket(token):
+    """Connect to dxFeed WebSocket"""
+    ws = create_connection(DXFEED_URL, timeout=10)
+
+    # SETUP
+    ws.send(json.dumps({
+        "type": "SETUP",
+        "channel": 0,
+        "keepaliveTimeout": 60,
+        "acceptKeepaliveTimeout": 60,
+        "version": "1.0.0"
+    }))
+    data = ws.recv()
+    logger.info(f"SETUP response: {data[:200] if data else 'empty'}")
+    if not data:
+        raise ConnectionError("WebSocket returned empty response during SETUP")
+
+    # AUTH
+    while True:
+        data = ws.recv()
+        logger.info(f"AUTH response: {data[:200] if data else 'empty'}")
+        if not data:
+            raise ConnectionError(f"WebSocket returned empty response during AUTH")
+        msg = json.loads(data)
+        if msg.get("type") == "AUTH_STATE":
+            if msg["state"] == "UNAUTHORIZED":
+                ws.send(json.dumps({"type": "AUTH", "channel": 0, "token": token}))
+            elif msg["state"] == "AUTHORIZED":
+                break
+
+    # FEED channel
+    ws.send(json.dumps({
+        "type": "CHANNEL_REQUEST",
+        "channel": 1,
+        "service": "FEED",
+        "parameters": {"contract": "AUTO"}
+    }))
+    data = ws.recv()
+    logger.info(f"CHANNEL_REQUEST response: {data[:200] if data else 'empty'}")
+    if not data:
+        raise ConnectionError("WebSocket returned empty response during CHANNEL_REQUEST")
+    msg = json.loads(data)
+
+    return ws
+
+
+def get_underlying_price(ws, symbol):
+    """Get underlying price - tries Trade first (most accurate), falls back to Quote midpoint"""
+    ws.send(json.dumps({
+        "type": "FEED_SUBSCRIPTION",
+        "channel": 1,
+        "add": [
+            {"symbol": symbol, "type": "Trade"},
+            {"symbol": symbol, "type": "Quote"}
+        ]
+    }))
+
+    trade_price = None
+    quote_mid = None
+    start = time.time()
+
+    while time.time() - start < 5:
+        try:
+            ws.settimeout(1)
+            msg = json.loads(ws.recv())
+            if msg.get("type") == "FEED_DATA":
+                for data in msg.get("data", []):
+                    if data.get("eventSymbol") == symbol:
+                        event_type = data.get("eventType")
+
+                        # Prefer Trade price (last trade)
+                        if event_type == "Trade":
+                            price = data.get("price")
+                            if price:
+                                trade_price = float(price)
+
+                        # Fallback: Quote midpoint
+                        elif event_type == "Quote":
+                            bid = data.get("bidPrice")
+                            ask = data.get("askPrice")
+                            if bid and ask:
+                                try:
+                                    quote_mid = (float(bid) + float(ask)) / 2
+                                except (ValueError, TypeError):
+                                    pass
+
+            # Return Trade price if we have it, otherwise Quote mid
+            if trade_price:
+                return trade_price
+            elif quote_mid:
+                return quote_mid
+
+        except:
+            continue
+
+    # Return whichever we got
+    return trade_price or quote_mid
+
+
+def generate_option_symbols(center_price, option_prefix, expiration, strikes_up, strikes_down, increment):
+    """Generate option symbols around center price"""
+    center_strike = round(center_price / increment) * increment
+    strikes = []
+
+    for i in range(-strikes_down, strikes_up + 1):
+        strike = center_strike + (i * increment)
+        strikes.append(strike)
+
+    options = []
+    for strike in strikes:
+        # Format strike: use int if whole number, else keep decimal
+        if strike == int(strike):
+            strike_str = str(int(strike))
+        else:
+            strike_str = str(strike)
+
+        options.append(f".{option_prefix}{expiration}C{strike_str}")
+        options.append(f".{option_prefix}{expiration}P{strike_str}")
+
+    return options
+
+
+def fetch_option_data(ws, symbols, wait_seconds=15):
+    """Fetch Greeks, Summary (OI), and Trade (Volume) for options"""
+    subscriptions = []
+    for symbol in symbols:
+        subscriptions.extend([
+            {"symbol": symbol, "type": "Greeks"},
+            {"symbol": symbol, "type": "Summary"},
+            {"symbol": symbol, "type": "Trade"},
+        ])
+
+    ws.send(json.dumps({
+        "type": "FEED_SUBSCRIPTION",
+        "channel": 1,
+        "add": subscriptions
+    }))
+
+    data = {}
+    start = time.time()
+
+    while time.time() - start < wait_seconds:
+        try:
+            ws.settimeout(0.5)
+            msg = json.loads(ws.recv())
+
+            if msg.get("type") == "FEED_DATA":
+                for item in msg.get("data", []):
+                    symbol = item.get("eventSymbol")
+                    event_type = item.get("eventType")
+
+                    if symbol not in data:
+                        data[symbol] = {}
+
+                    if event_type == "Greeks":
+                        data[symbol]["gamma"] = item.get("gamma")
+                        data[symbol]["delta"] = item.get("delta")
+                        data[symbol]["vega"] = item.get("vega")
+                        data[symbol]["iv"] = item.get("volatility")
+                    elif event_type == "Summary":
+                        data[symbol]["oi"] = item.get("openInterest")
+                    elif event_type == "Trade":
+                        # Cumulative volume from Trade events
+                        data[symbol]["volume"] = item.get("dayVolume", 0)
+        except:
+            continue
+
+    return data

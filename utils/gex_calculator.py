@@ -13,25 +13,30 @@ import pandas as pd
 def parse_option_symbol(symbol):
     """
     Parse option symbol to extract components.
-    Supports multiple option symbol formats (SPXW, NDXP, etc.)
-
-    Args:
-        symbol (str): Option symbol (e.g., ".SPXW251214C6000", ".NDXP251214P20000")
-
-    Returns:
-        dict: Dictionary with 'prefix', 'expiration', 'type' (C/P), and 'strike'
-              Returns None if symbol doesn't match pattern
+    Supports dxFeed format and standard OCC format (Tradier).
     """
-    # Match pattern: .PREFIX + YYMMDD + C/P + STRIKE
-    pattern = r'\.([A-Z]+)(\d{6})([CP])(\d+)'
-    match = re.match(pattern, symbol)
-
+    if not isinstance(symbol, str): return None
+    
+    # dxFeed format: .PREFIX + YYMMDD + C/P + STRIKE (e.g., .SPXW251214C6000)
+    dx_pattern = r'\.([A-Z]+)(\d{6})([CP])(\d+)'
+    match = re.match(dx_pattern, symbol)
     if match:
         return {
-            'prefix': match.group(1),      # e.g., 'SPXW', 'NDXP'
-            'expiration': match.group(2),  # e.g., '251214'
-            'type': match.group(3),        # 'C' for call, 'P' for put
-            'strike': int(match.group(4))  # e.g., 6000
+            'prefix': match.group(1),
+            'expiration': match.group(2),
+            'type': match.group(3),
+            'strike': int(match.group(4))
+        }
+        
+    # Standard OCC: ROOT + YYMMDD + C/P + STRIKE * 1000 (e.g. SPXW251219C06000000)
+    occ_pattern = r'^([A-Z]+)(\d{6})([CP])(\d{8})$'
+    match = re.match(occ_pattern, symbol.replace(" ", ""))
+    if match:
+        return {
+            'prefix': match.group(1),
+            'expiration': match.group(2),
+            'type': match.group(3),
+            'strike': float(match.group(4)) / 1000
         }
 
     return None

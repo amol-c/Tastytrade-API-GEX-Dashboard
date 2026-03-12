@@ -35,17 +35,21 @@ class VIXSlope:
     data_points: int        # Number of readings used
 
 
-def get_vix_price(ws, timeout: int = 3) -> Optional[float]:
+def get_vix_price(ws=None, timeout: int = 3) -> Optional[float]:
     """
-    Get current VIX level from Tastytrade dxFeed WebSocket.
+    Get current VIX level. Routes between Tradier REST or Tastytrade dxFeed WebSocket.
 
     Args:
-        ws: Active WebSocket connection (already authenticated)
-        timeout: Seconds to wait for data
+        ws: Active WebSocket connection (for dxFeed), or None (for Tradier)
+        timeout: Seconds to wait for data (dxFeed only)
 
     Returns:
         VIX price (e.g., 24.93) or None if unavailable
     """
+    if ws is None:
+        # Use Tradier API
+        from utils.tradier_api import get_vix_price as tradier_vix
+        return tradier_vix()
     try:
         ws.send(json.dumps({
             "type": "FEED_SUBSCRIPTION",

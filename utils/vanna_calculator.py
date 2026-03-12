@@ -143,19 +143,40 @@ class VannaCalculator:
         return vanna_exposure
 
     def calculate_tte_from_expiry(self, expiry_str: str) -> float:
-        """Calculate time to expiry in years from YYMMDD string."""
+        """Calculate time to expiry in years from YYMMDD string, using US/Eastern for market hours."""
         from datetime import datetime
+        import pytz
 
-        expiry_date = datetime.strptime(expiry_str, "%y%m%d")
-        expiry_datetime = expiry_date.replace(hour=16, minute=0)
+        try:
+            # Parse expiry date (standard YYMMDD)
+            expiry_date_naive = datetime.strptime(expiry_str, "%y%m%d")
+            
+            # Localize to NY time
+            ny_tz = pytz.timezone('US/Eastern')
+            
+            # Set target as 4:00 PM (16:00) on the day of expiry in NY
+            expiry_ny = ny_tz.localize(datetime(
+                expiry_date_naive.year, 
+                expiry_date_naive.month, 
+                expiry_date_naive.day, 
+                16, 0, 0
+            ))
 
-        now = datetime.now()
-        time_remaining = expiry_datetime - now
+            # Current time in NY
+            now_ny = datetime.now(ny_tz)
+            
+            time_remaining = expiry_ny - now_ny
+            seconds_remaining = time_remaining.total_seconds()
 
-        minutes_remaining = time_remaining.total_seconds() / 60
-        trading_minutes_per_year = 252 * 6.5 * 60
+            if seconds_remaining <= 0:
+                # If we are past 4pm NY, it's technically expired
+                return 0.0
 
-        return max(0, minutes_remaining / trading_minutes_per_year)
+            trading_seconds_per_year = 252 * 6.5 * 3600
+            return seconds_remaining / trading_seconds_per_year
+        except Exception as e:
+            logger.error(f"Error calculating TTE: {e}")
+            return 0.0
 
     def calculate_current_vanna(
         self,
@@ -187,6 +208,18 @@ class VannaCalculator:
 
         if valid_count < min_valid_options:
             logger.warning(f"Vanna skipped: only {valid_count}/{len(options_data)} options have valid Greeks (min={min_valid_options})")
+            # Log a sample of why they are invalid for debugging
+            invalid_samples = []
+            for s, d in list(options_data.items())[:10]:
+                reasons = []
+                if d.get('delta') is None: reasons.append("delta=None")
+                if d.get('vega') is None: reasons.append("vega=None")
+                if not d.get('iv') or d.get('iv') <= 0: reasons.append(f"iv={d.get('iv')}")
+                if not d.get('oi') or d.get('oi') <= 0: reasons.append(f"oi={d.get('oi')}")
+                if reasons:
+                    invalid_samples.append(f"{s}: {', '.join(reasons)}")
+            if invalid_samples:
+                logger.debug(f"Sample invalid options: {'; '.join(invalid_samples)}")
             return None
 
         tte = self.calculate_tte_from_expiry(expiry_str)
@@ -290,11 +323,6 @@ class VannaCalculator:
             iv = data.get('iv')
             oi = data.get('oi')
 
-            if delta is None or vega is None or iv is None or oi is None:
-                continue
-            if iv <= 0 or oi <= 0:
-                continue
-
             strike = data.get('strike')
             opt_type = data.get('type')
 
@@ -305,7 +333,18 @@ class VannaCalculator:
                     strike = parsed['strike']
                     opt_type = parsed['type']
                 else:
+                    logger.debug(f"VEx skip {symbol}: could not parse strike/type")
                     continue
+
+            if delta is None or vega is None or iv is None or oi is None:
+                logger.debug(f"VEx skip {symbol}: missing required field (delta={delta}, vega={vega}, iv={iv}, oi={oi})")
+                continue
+            if iv <= 0 or oi <= 0:
+                logger.debug(f"VEx skip {symbol}: non-positive iv({iv}) or oi({oi})")
+                continue
+            if vega == 0:
+                logger.debug(f"VEx skip {symbol}: vega is 0")
+                continue
 
             vanna_exp = self.calculate_vanna_exposure(
                 spot=spot,
