@@ -688,7 +688,17 @@ def main():
         spot=st.session_state.underlying_price,
         expiry_str=st.session_state.expiration,
     )
-    vex_metrics = vanna_calc.get_vex_metrics(strike_vex) if strike_vex else {}
+    if not strike_vex:
+        # Diagnostic help
+        raw_count = len(st.session_state.option_data) if 'option_data' in st.session_state else 0
+        with st.expander("🔍 VEx Diagnostic (Hidden)"):
+            st.write(f"Raw option data count: {raw_count}")
+            if raw_count > 0:
+                sample_opt = list(st.session_state.option_data.values())[0]
+                st.write(f"Sample option data fields: {list(sample_opt.keys())}")
+                st.write(f"Sample Greek values: Δ={sample_opt.get('delta')}, V={sample_opt.get('vega')}, γ={sample_opt.get('gamma')}")
+            st.write(f"Expiration string: {st.session_state.expiration}")
+            st.write(f"Spot price: {st.session_state.underlying_price}")
 
     render_vex_section(
         strike_vex=strike_vex,
