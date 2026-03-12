@@ -53,6 +53,53 @@ Dashboard opens at: **http://localhost:8501**
 
 ---
 
+## 💻 Desktop App (Standalone)
+
+**No Python installation required!** Download the pre-built desktop app.
+
+### Download
+
+Get the latest release from [GitHub Releases](../../releases):
+
+| Platform | Download |
+|----------|----------|
+| Windows | `GEX_Dashboard_Windows.zip` |
+| macOS (Intel) | `GEX_Dashboard_macOS.dmg` |
+| macOS (Apple Silicon) | `GEX_Dashboard_macOS_ARM.dmg` |
+
+### Installation
+
+**Windows:**
+1. Download and extract `GEX_Dashboard_Windows.zip`
+2. Run `GEX_Dashboard.exe`
+3. Enter your Tastytrade credentials on first run
+
+**macOS:**
+1. Download `GEX_Dashboard_macOS.dmg` (or ARM version for M1/M2/M3)
+2. Open the DMG and drag to Applications
+3. Run from Applications folder
+4. Enter your Tastytrade credentials on first run
+
+### Requirements
+
+- **Windows:** .NET Framework 4.0+ and Edge WebView2 (usually pre-installed on Windows 10/11)
+- **macOS:** macOS 10.15 (Catalina) or later
+
+### Building from Source
+
+```bash
+# Install build dependencies
+pip install -r requirements.txt
+pip install -r requirements-desktop.txt
+
+# Build executable
+pyinstaller gex_dashboard.spec
+
+# Output in dist/ folder
+```
+
+---
+
 ## 🧪 Try the Demo (No API Required!)
 
 **Want to test the dashboard without setting up API credentials?**
@@ -195,13 +242,15 @@ start_demo_dashboard.bat
 - **Token Management:** Automatic refresh with expiration checking
 
 ### Files
-- `simple_dashboard.py` - Main dashboard application (real-time data, all symbols)
-- `demo_dashboard.py` - Demo dashboard (no API required, delayed data, experiment with symbols)
+- `app.py` - Main entry point (handles setup wizard + dashboard)
+- `simple_dashboard.py` - Dashboard application (real-time data, all symbols)
+- `demo_dashboard.py` - Demo dashboard (no API required, delayed data)
+- `desktop_app.py` - Desktop wrapper using pywebview
+- `components/setup_wizard.py` - First-run credential setup UI
 - `utils/auth.py` - Token management with auto-refresh
 - `utils/gex_calculator.py` - Thread-safe GEX calculations
-- `install_requirements.bat` - Automated dependency installer (Windows)
+- `gex_dashboard.spec` - PyInstaller build configuration
 - `start_simple_dashboard.bat` - Dashboard launcher (Windows)
-- `start_demo_dashboard.bat` - Demo dashboard launcher (Windows)
 
 ### Token Management (Automatic)
 - **Access Token:** 15-min expiry, refreshes when <60s remaining

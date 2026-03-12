@@ -1,0 +1,6 @@
+# Additional requirements for desktop app packaging
+# Install with: pip install -r requirements-desktop.txt
+
+pywebview>=5.0,<6.0
+pyinstaller>=6.0
+streamlit-desktop-app>=0.3.0

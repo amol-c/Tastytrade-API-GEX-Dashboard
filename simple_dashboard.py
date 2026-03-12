@@ -7,13 +7,28 @@ import streamlit as st
 import json
 import time
 import logging
+import sys
+import os
 from datetime import datetime, timedelta
+
+# Configure logging - use temp directory for frozen apps
+def _get_log_path():
+    if getattr(sys, 'frozen', False):
+        # Running as frozen app - use temp directory
+        import tempfile
+        log_dir = os.path.join(tempfile.gettempdir(), 'gex_dashboard')
+        os.makedirs(log_dir, exist_ok=True)
+        return os.path.join(log_dir, 'dashboard.log')
+    else:
+        # Development - use local logs directory
+        os.makedirs('logs', exist_ok=True)
+        return 'logs/dashboard.log'
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/dashboard.log'),
+        logging.FileHandler(_get_log_path()),
         logging.StreamHandler()
     ]
 )
@@ -37,6 +52,7 @@ from components.market_analysis_display import render_bias_help_expander, render
 from components.vex_display import render_vex_section
 from components.combined_flow_display import render_combined_flow_section
 from components.sentiment_display import render_sentiment_section
+from components.account_settings import render_account_settings
 from components.dashboard_layout import (
     render_tier1_summary,
     render_tier2_exposure,
@@ -45,8 +61,6 @@ from components.dashboard_layout import (
     render_key_levels_expander,
     render_ai_prompt_expander,
 )
-
-st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
 
 # Preset symbol configuration
 PRESET_SYMBOLS = {
@@ -63,7 +77,12 @@ DXFEED_URL = "wss://tasty-openapi-ws.dxfeed.com/realtime"
 
 def connect_websocket(token):
     """Connect to dxFeed WebSocket"""
-    ws = create_connection(DXFEED_URL, timeout=10)
+    import ssl
+    import certifi
+
+    # Create SSL context with certifi certificates (fixes frozen app SSL issues)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    ws = create_connection(DXFEED_URL, timeout=10, sslopt={"context": ssl_context})
 
     # SETUP
     ws.send(json.dumps({
@@ -353,6 +372,7 @@ def aggregate_by_strike(option_data):
 
 
 def main():
+    st.set_page_config(page_title="GEX Dashboard", page_icon="📊", layout="wide")
     st.title("📊 Options Gamma Exposure Dashboard")
 
     # Initialize session state
@@ -436,7 +456,10 @@ def main():
         st.divider()
 
         # Manual fetch button
-        fetch_triggered = st.button("🔄 Fetch Data", type="primary", width='stretch')
+        fetch_triggered = st.button("🔄 Fetch Data", type="primary", use_container_width=True)
+
+        # Account settings
+        render_account_settings()
 
         # Auto-fetch logic
         if st.session_state.auto_refresh:
