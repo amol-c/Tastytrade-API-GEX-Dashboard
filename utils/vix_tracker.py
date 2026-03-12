@@ -8,6 +8,7 @@ import os
 import logging
 import time
 from datetime import datetime, timedelta
+import pytz
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -134,14 +135,18 @@ def calculate_vix_slope(
             data_points=len(history) if history else 0
         )
 
-    # Filter to recent window
-    now = datetime.now()
+    # Filter to recent window using NY time
+    ny_tz = pytz.timezone('US/Eastern')
+    now = datetime.now(ny_tz)
     cutoff = now - timedelta(minutes=window_minutes)
 
     recent = []
     for record in history:
         try:
             ts = datetime.fromisoformat(record['timestamp'])
+            if ts.tzinfo is None:
+                ts = ny_tz.localize(ts)
+            
             if ts >= cutoff:
                 recent.append({
                     'minutes_ago': (now - ts).total_seconds() / 60,
@@ -251,7 +256,8 @@ class VIXHistoryTracker:
             date_str: Date in YYMMDD format (defaults to today)
             max_records: Maximum records per file
         """
-        self.date_str = date_str or datetime.now().strftime("%y%m%d")
+        ny_tz = pytz.timezone('US/Eastern')
+        self.date_str = date_str or datetime.now(ny_tz).strftime("%y%m%d")
         self.max_records = max_records
         self.history: List[Dict] = []
         self._ensure_folder()
@@ -300,8 +306,9 @@ class VIXHistoryTracker:
             direction: "RISING", "FALLING", or "FLAT"
             change_pct: Percentage change from previous
         """
+        ny_tz = pytz.timezone('US/Eastern')
         record = {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(ny_tz).isoformat(),
             'vix': round(vix, 2),
             'direction': direction,
             'change_pct': round(change_pct, 2),

@@ -186,7 +186,7 @@ class CharmCalculator:
         market_close_hour: int = 16,
     ) -> float:
         """
-        Calculate time to expiry in years.
+        Calculate time to expiry in years, synchronized to US/Eastern market time.
 
         Args:
             expiry_str: Expiration date in YYMMDD format
@@ -197,24 +197,41 @@ class CharmCalculator:
             Time to expiry in years
         """
         from datetime import datetime, timedelta
+        import pytz
 
-        # Parse expiry
-        expiry_date = datetime.strptime(expiry_str, "%y%m%d")
-        expiry_datetime = expiry_date.replace(hour=market_close_hour, minute=0)
+        try:
+            # Parse expiry
+            expiry_date_naive = datetime.strptime(expiry_str, "%y%m%d")
+            
+            # Localize to NY time
+            ny_tz = pytz.timezone('US/Eastern')
+            
+            # Set target as 4:00 PM (16:00) on the day of expiry in NY
+            expiry_ny = ny_tz.localize(datetime(
+                expiry_date_naive.year, 
+                expiry_date_naive.month, 
+                expiry_date_naive.day, 
+                market_close_hour, 0, 0
+            ))
 
-        # Current time + forward projection
-        now = datetime.now() + timedelta(minutes=minutes_forward)
+            # Current time in NY + forward projection
+            now_ny = datetime.now(ny_tz) + timedelta(minutes=minutes_forward)
 
-        # Time remaining
-        time_remaining = expiry_datetime - now
+            # Time remaining
+            time_remaining = expiry_ny - now_ny
+            seconds_remaining = time_remaining.total_seconds()
 
-        # Convert to years (trading days basis)
-        minutes_remaining = time_remaining.total_seconds() / 60
-        trading_minutes_per_year = 252 * 6.5 * 60
+            if seconds_remaining <= 0:
+                return 0.0
 
-        tte = max(0, minutes_remaining / trading_minutes_per_year)
+            # Convert to years (trading days basis)
+            trading_seconds_per_year = 252 * 6.5 * 3600
+            tte = seconds_remaining / trading_seconds_per_year
 
-        return tte
+            return tte
+        except Exception as e:
+            logger.error(f"Error calculating TTE in Charm: {e}")
+            return 0.0
 
     def calculate_current_charm(
         self,

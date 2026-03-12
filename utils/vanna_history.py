@@ -6,6 +6,7 @@ import json
 import os
 import logging
 from datetime import datetime
+import pytz
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,9 @@ class VannaHistoryTracker:
         iv_rising = (iv_direction == "RISING")
         es_futures = calculate_es_futures_from_vanna(net_vanna, spot_price, iv_rising)
 
+        ny_tz = pytz.timezone('US/Eastern')
         record = {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(ny_tz).isoformat(),
             'expiry': expiry,
             'spot_price': spot_price,
             'net_vanna': net_vanna,

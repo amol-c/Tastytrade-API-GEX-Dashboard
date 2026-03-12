@@ -6,6 +6,7 @@ Generates AI-ready summaries for trading decisions.
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import pytz
 
 from utils.charm_calculator import CharmCalculator, FlowDirection
 from utils.sentiment_calculator import SentimentCalculator
@@ -301,9 +302,13 @@ class MarketAnalyzer:
 
         bias, confidence = self._score_to_bias(bias_score)
 
+        # Calculate timestamp in NY
+        ny_tz = pytz.timezone('US/Eastern')
+        ny_now = datetime.now(ny_tz)
+
         return MarketAnalysis(
             symbol=symbol,
-            timestamp=datetime.now(),
+            timestamp=ny_now,
             current_price=spot_price,
             expiry=expiry,
             bias=bias,
@@ -392,21 +397,35 @@ class MarketAnalyzer:
 
     def _get_greek_weights(self, expiry: str) -> tuple:
         """
-        Get time-based weights for Vanna vs Charm.
+        Get time-based weights for Vanna vs Charm based on NY market time.
 
         Returns (vanna_weight, charm_weight) as percentages that sum to 1.0
 
-        Timeline:
+        Timeline (ET):
         - >5 hours: Vanna 70%, Charm 30%
         - 3-5 hours: Vanna 50%, Charm 50%
         - 1-3 hours: Vanna 30%, Charm 70%
         - <1 hour: Vanna 10%, Charm 90%
         """
         try:
-            expiry_date = datetime.strptime(expiry, "%y%m%d")
-            expiry_datetime = expiry_date.replace(hour=16, minute=0)
-            now = datetime.now()
-            time_remaining = expiry_datetime - now
+            # Parse expiry date
+            expiry_date_naive = datetime.strptime(expiry, "%y%m%d")
+            
+            # NY Timezone
+            ny_tz = pytz.timezone('US/Eastern')
+            
+            # Market close is 16:00 ET
+            expiry_ny = ny_tz.localize(datetime(
+                expiry_date_naive.year, 
+                expiry_date_naive.month, 
+                expiry_date_naive.day, 
+                16, 0, 0
+            ))
+
+            # Current time in NY
+            now_ny = datetime.now(ny_tz)
+            
+            time_remaining = expiry_ny - now_ny
             hours_remaining = time_remaining.total_seconds() / 3600
 
             if hours_remaining <= 0:
@@ -419,7 +438,8 @@ class MarketAnalyzer:
                 return (0.50, 0.50)
             else:
                 return (0.70, 0.30)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error calculating Greek weights: {e}")
             return (0.50, 0.50)  # Default to equal weight
 
     def _calculate_bias_score(
