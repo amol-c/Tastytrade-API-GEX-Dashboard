@@ -92,17 +92,38 @@ def fetch_option_data(symbol: str, expiration: str) -> dict:
             options = [options]
             
         result = {}
+        from utils.gex_calculator import parse_option_symbol
+
         for opt in options:
             opt_sym = opt.get("symbol")
-            greeks = opt.get("greeks", {})
+            if not opt_sym:
+                continue
+                
+            # Pre-parse symbol to get strike and type
+            parsed = parse_option_symbol(opt_sym)
+            if not parsed:
+                continue
+
+            greeks = opt.get("greeks")
+            if not isinstance(greeks, dict):
+                greeks = {}
             
+            # Helper to safely convert to float
+            def to_f(val, default=0.0):
+                try:
+                    return float(val) if val is not None else default
+                except (ValueError, TypeError):
+                    return default
+
             result[opt_sym] = {
-                "gamma": greeks.get("gamma", 0.0),
-                "delta": greeks.get("delta", 0.0),
-                "vega": greeks.get("vega", 0.0),
-                "iv": greeks.get("smv_vol", 0.0) or greeks.get("bid_iv", 0.0),
-                "oi": opt.get("open_interest", 0),
-                "volume": opt.get("volume", 0)
+                "gamma": to_f(greeks.get("gamma")),
+                "delta": to_f(greeks.get("delta")),
+                "vega": to_f(greeks.get("vega")),
+                "iv": to_f(greeks.get("smv_vol") or greeks.get("bid_iv") or greeks.get("mid_iv")),
+                "oi": int(to_f(opt.get("open_interest"), 0)),
+                "volume": int(to_f(opt.get("volume"), 0)),
+                "strike": parsed['strike'],
+                "type": parsed['type']
             }
         return result
     except Exception as e:

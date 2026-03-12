@@ -187,6 +187,18 @@ class VannaCalculator:
 
         if valid_count < min_valid_options:
             logger.warning(f"Vanna skipped: only {valid_count}/{len(options_data)} options have valid Greeks (min={min_valid_options})")
+            # Log a sample of why they are invalid for debugging
+            invalid_samples = []
+            for s, d in list(options_data.items())[:10]:
+                reasons = []
+                if d.get('delta') is None: reasons.append("delta=None")
+                if d.get('vega') is None: reasons.append("vega=None")
+                if not d.get('iv') or d.get('iv') <= 0: reasons.append(f"iv={d.get('iv')}")
+                if not d.get('oi') or d.get('oi') <= 0: reasons.append(f"oi={d.get('oi')}")
+                if reasons:
+                    invalid_samples.append(f"{s}: {', '.join(reasons)}")
+            if invalid_samples:
+                logger.debug(f"Sample invalid options: {'; '.join(invalid_samples)}")
             return None
 
         tte = self.calculate_tte_from_expiry(expiry_str)
@@ -290,11 +302,6 @@ class VannaCalculator:
             iv = data.get('iv')
             oi = data.get('oi')
 
-            if delta is None or vega is None or iv is None or oi is None:
-                continue
-            if iv <= 0 or oi <= 0:
-                continue
-
             strike = data.get('strike')
             opt_type = data.get('type')
 
@@ -305,7 +312,18 @@ class VannaCalculator:
                     strike = parsed['strike']
                     opt_type = parsed['type']
                 else:
+                    logger.debug(f"VEx skip {symbol}: could not parse strike/type")
                     continue
+
+            if delta is None or vega is None or iv is None or oi is None:
+                logger.debug(f"VEx skip {symbol}: missing required field (delta={delta}, vega={vega}, iv={iv}, oi={oi})")
+                continue
+            if iv <= 0 or oi <= 0:
+                logger.debug(f"VEx skip {symbol}: non-positive iv({iv}) or oi({oi})")
+                continue
+            if vega == 0:
+                logger.debug(f"VEx skip {symbol}: vega is 0")
+                continue
 
             vanna_exp = self.calculate_vanna_exposure(
                 spot=spot,
