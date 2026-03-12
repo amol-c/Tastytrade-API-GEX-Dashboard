@@ -482,12 +482,10 @@ def main():
         gex_view = st.radio(
             "GEX View",
             ["Calls vs Puts", "Net GEX", "Absolute GEX"],
-            index=["Calls vs Puts", "Net GEX", "Absolute GEX"].index(st.session_state.gex_view),
-            key="gex_view_radio",
+            key="gex_view",
             horizontal=True,
             help="Calls vs Puts: Separate bars | Net GEX: Call-Put | Absolute GEX: |Net| magnitude"
         )
-        st.session_state.gex_view = gex_view
 
         # Create chart based on selected view
         fig = go.Figure()
@@ -835,12 +833,10 @@ def main():
             volume_view = st.radio(
                 "Volume View",
                 ["Calls vs Puts", "Total Volume"],
-                index=["Calls vs Puts", "Total Volume"].index(st.session_state.volume_view),
-                key="volume_view_radio",
+                key="volume_view",
                 horizontal=True,
                 help="Switch between separate call/put volume or total volume by strike"
             )
-            st.session_state.volume_view = volume_view
 
             fig_vol = go.Figure()
 
