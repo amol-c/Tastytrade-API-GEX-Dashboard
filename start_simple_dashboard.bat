@@ -7,4 +7,4 @@ echo ================================================
 echo.
 
 cd /d "%~dp0"
-python -m streamlit run simple_dashboard.py
+python -m streamlit run app.py
