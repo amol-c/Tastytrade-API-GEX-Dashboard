@@ -23,15 +23,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 import pandas as pd
 import plotly.graph_objects as go
-from utils.tradier_api import get_underlying_price as tradier_get_underlying, get_vix_price as tradier_get_vix, fetch_option_data as tradier_fetch_options
-from utils.websocket_manager import connect_websocket as dxfeed_connect, fetch_option_data as dxfeed_fetch_options, get_underlying_price as dxfeed_get_underlying, get_vix_price as dxfeed_get_vix
+from utils.tradier_api import get_underlying_price as tradier_get_underlying, fetch_option_data as tradier_fetch_options
+from utils.websocket_manager import connect_websocket as dxfeed_connect, fetch_option_data as dxfeed_fetch_options, get_underlying_price as dxfeed_get_underlying
 from utils.auth import ensure_streamer_token
 
 from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
 from utils.market_analyzer import MarketAnalyzer
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
-from utils.vix_tracker import determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
+from utils.vix_tracker import get_vix_price, determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
 from utils.vanna_calculator import VannaCalculator
 from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
 from components.charm_display import render_charm_section
@@ -298,7 +298,7 @@ def main():
                             
                         st.info(f"📡 Fetching option chain via Tradier...")
                         raw_option_data = tradier_fetch_options(symbol, expiration)
-                        current_vix = tradier_get_vix()
+                        current_vix = get_vix_price()
                         
                     else:
                         # Tastytrade / dxFeed Flow
@@ -338,7 +338,7 @@ def main():
                             
                         st.info(f"📡 Fetching options via dxFeed...")
                         raw_option_data = dxfeed_fetch_options(ws, option_symbols, wait_seconds=15)
-                        current_vix = dxfeed_get_vix(ws)
+                        current_vix = get_vix_price(ws)
                         ws.close()
 
                     
