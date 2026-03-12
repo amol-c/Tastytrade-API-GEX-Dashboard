@@ -143,19 +143,33 @@ class VannaCalculator:
         return vanna_exposure
 
     def calculate_tte_from_expiry(self, expiry_str: str) -> float:
-        """Calculate time to expiry in years from YYMMDD string."""
-        from datetime import datetime
+        """Calculate time to expiry in years from YYMMDD string, using UTC for timezone safety."""
+        from datetime import datetime, timezone
 
-        expiry_date = datetime.strptime(expiry_str, "%y%m%d")
-        expiry_datetime = expiry_date.replace(hour=16, minute=0)
+        # Parse expiry date
+        try:
+            expiry_date = datetime.strptime(expiry_str, "%y%m%d")
+            
+            # Market close is 16:00 ET. 
+            # Approx 21:00 UTC (handles both EST/EDT within an hour of error, which is fine for TTE).
+            expiry_utc = datetime(expiry_date.year, expiry_date.month, expiry_date.day, 21, 0, tzinfo=timezone.utc)
 
-        now = datetime.now()
-        time_remaining = expiry_datetime - now
+            # Current time in UTC
+            now_utc = datetime.now(timezone.utc)
+            
+            time_remaining = expiry_utc - now_utc
+            seconds_remaining = time_remaining.total_seconds()
 
-        minutes_remaining = time_remaining.total_seconds() / 60
-        trading_minutes_per_year = 252 * 6.5 * 60
+            # If it's expired or very close, return a tiny minimum to avoid 0 VEx for 0DTE
+            if seconds_remaining <= 0:
+                # If it's still "today", provide a tiny floor so charts don't disappear instantly at 4pm
+                return 0.0
 
-        return max(0, minutes_remaining / trading_minutes_per_year)
+            trading_seconds_per_year = 252 * 6.5 * 3600
+            return seconds_remaining / trading_seconds_per_year
+        except Exception as e:
+            logger.error(f"Error calculating TTE: {e}")
+            return 0.0
 
     def calculate_current_vanna(
         self,
