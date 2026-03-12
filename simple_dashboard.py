@@ -36,6 +36,7 @@ from components.greek_dominance import render_greek_dominance_timer
 from components.market_analysis_display import render_bias_help_expander, render_market_analysis_header
 from components.vex_display import render_vex_section
 from components.combined_flow_display import render_combined_flow_section
+from components.sentiment_display import render_sentiment_section
 from components.dashboard_layout import (
     render_tier1_summary,
     render_tier2_exposure,
@@ -639,6 +640,7 @@ def main():
         render_greek_dominance_timer(expiry)
         render_bias_help_expander()
         render_market_analysis_header(analysis)
+        render_sentiment_section(metrics, aggregate_by_strike(st.session_state.option_data))
         render_key_levels_expander(analysis)
 
     # ============================================================
@@ -1082,37 +1084,6 @@ def main():
             top_pc['pc_ratio_vol'] = top_pc['pc_ratio_vol'].apply(lambda x: f"{x:.2f}")
             top_pc.columns = ['Strike', 'P/C Ratio (OI)', 'P/C Ratio (Vol)', 'Total OI']
             st.dataframe(top_pc, hide_index=True, width='stretch')
-
-    # Sentiment Ratios
-    st.subheader("📊 Sentiment Ratios")
-
-    sentiment_calc = SentimentCalculator()
-    ratio_col1, ratio_col2 = st.columns(2)
-
-    with ratio_col1:
-        dealer_result = sentiment_calc.calculate_from_gex_metrics(metrics)
-        st.metric(
-            "Dealer Gamma Ratio",
-            f"{dealer_result.ratio:.2f}",
-            delta=dealer_result.label,
-            delta_color="normal" if dealer_result.ratio >= 0.5 else "inverse",
-            help="Call GEX / Total GEX. 1.0 = stabilizing, 0.0 = destabilizing, 0.5 = neutral."
-        )
-        st.progress(dealer_result.ratio)
-
-    with ratio_col2:
-        sentiment_result = sentiment_calc.calculate_from_strike_df(strike_df)
-        if sentiment_result:
-            st.metric(
-                "Active Sentiment (Customers)",
-                f"{sentiment_result.ratio:.2f}",
-                delta=sentiment_result.label,
-                delta_color="normal" if sentiment_result.ratio >= 0.5 else "inverse",
-                help="Call Volume / Total Volume. 1.0 = bullish, 0.0 = bearish, 0.5 = neutral."
-            )
-            st.progress(sentiment_result.ratio)
-        else:
-            st.metric("Active Sentiment", "N/A", help="No volume data available")
 
     # Auto-refresh logic - only rerun when it's time to fetch, not constantly
     if st.session_state.auto_refresh and st.session_state.last_fetch_time > 0:
