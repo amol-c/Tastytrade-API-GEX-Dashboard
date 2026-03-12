@@ -9,6 +9,9 @@ import time
 import logging
 from datetime import datetime, timedelta
 
+import os
+os.makedirs('logs', exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -18,15 +21,14 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-from websocket import create_connection
 import pandas as pd
 import plotly.graph_objects as go
-from utils.auth import ensure_streamer_token
+from utils.tradier_api import get_underlying_price, get_vix_price, fetch_option_data
 from utils.gex_calculator import GEXCalculator
 from utils.sentiment_calculator import SentimentCalculator
 from utils.market_analyzer import MarketAnalyzer
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
-from utils.vix_tracker import get_vix_price, determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
+from utils.vix_tracker import determine_iv_direction, calculate_vix_slope, VIXHistoryTracker, VIXSlope
 from utils.vanna_calculator import VannaCalculator
 from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
 from components.charm_display import render_charm_section
@@ -57,177 +59,7 @@ PRESET_SYMBOLS = {
     "DIA": {"option_prefix": "DIA", "default_price": 450, "increment": 1},
 }
 
-DXFEED_URL = "wss://tasty-openapi-ws.dxfeed.com/realtime"
 
-
-def connect_websocket(token):
-    """Connect to dxFeed WebSocket"""
-    ws = create_connection(DXFEED_URL, timeout=10)
-
-    # SETUP
-    ws.send(json.dumps({
-        "type": "SETUP",
-        "channel": 0,
-        "keepaliveTimeout": 60,
-        "acceptKeepaliveTimeout": 60,
-        "version": "1.0.0"
-    }))
-    data = ws.recv()
-    logger.info(f"SETUP response: {data[:200] if data else 'empty'}")
-    if not data:
-        raise ConnectionError("WebSocket returned empty response during SETUP")
-
-    # AUTH
-    while True:
-        data = ws.recv()
-        logger.info(f"AUTH response: {data[:200] if data else 'empty'}")
-        if not data:
-            raise ConnectionError(f"WebSocket returned empty response during AUTH")
-        msg = json.loads(data)
-        if msg.get("type") == "AUTH_STATE":
-            if msg["state"] == "UNAUTHORIZED":
-                ws.send(json.dumps({"type": "AUTH", "channel": 0, "token": token}))
-            elif msg["state"] == "AUTHORIZED":
-                break
-
-    # FEED channel
-    ws.send(json.dumps({
-        "type": "CHANNEL_REQUEST",
-        "channel": 1,
-        "service": "FEED",
-        "parameters": {"contract": "AUTO"}
-    }))
-    data = ws.recv()
-    logger.info(f"CHANNEL_REQUEST response: {data[:200] if data else 'empty'}")
-    if not data:
-        raise ConnectionError("WebSocket returned empty response during CHANNEL_REQUEST")
-    msg = json.loads(data)
-
-    return ws
-
-
-def get_underlying_price(ws, symbol):
-    """Get underlying price - tries Trade first (most accurate), falls back to Quote midpoint"""
-    ws.send(json.dumps({
-        "type": "FEED_SUBSCRIPTION",
-        "channel": 1,
-        "add": [
-            {"symbol": symbol, "type": "Trade"},
-            {"symbol": symbol, "type": "Quote"}
-        ]
-    }))
-
-    trade_price = None
-    quote_mid = None
-    start = time.time()
-
-    while time.time() - start < 5:
-        try:
-            ws.settimeout(1)
-            msg = json.loads(ws.recv())
-            if msg.get("type") == "FEED_DATA":
-                for data in msg.get("data", []):
-                    if data.get("eventSymbol") == symbol:
-                        event_type = data.get("eventType")
-
-                        # Prefer Trade price (last trade)
-                        if event_type == "Trade":
-                            price = data.get("price")
-                            if price:
-                                trade_price = float(price)
-
-                        # Fallback: Quote midpoint
-                        elif event_type == "Quote":
-                            bid = data.get("bidPrice")
-                            ask = data.get("askPrice")
-                            if bid and ask:
-                                try:
-                                    quote_mid = (float(bid) + float(ask)) / 2
-                                except (ValueError, TypeError):
-                                    pass
-
-            # Return Trade price if we have it, otherwise Quote mid
-            if trade_price:
-                return trade_price
-            elif quote_mid:
-                return quote_mid
-
-        except:
-            continue
-
-    # Return whichever we got
-    return trade_price or quote_mid
-
-
-def generate_option_symbols(center_price, option_prefix, expiration, strikes_up, strikes_down, increment):
-    """Generate option symbols around center price"""
-    center_strike = round(center_price / increment) * increment
-    strikes = []
-
-    for i in range(-strikes_down, strikes_up + 1):
-        strike = center_strike + (i * increment)
-        strikes.append(strike)
-
-    options = []
-    for strike in strikes:
-        # Format strike: use int if whole number, else keep decimal
-        if strike == int(strike):
-            strike_str = str(int(strike))
-        else:
-            strike_str = str(strike)
-
-        options.append(f".{option_prefix}{expiration}C{strike_str}")
-        options.append(f".{option_prefix}{expiration}P{strike_str}")
-
-    return options
-
-
-def fetch_option_data(ws, symbols, wait_seconds=15):
-    """Fetch Greeks, Summary (OI), and Trade (Volume) for options"""
-    subscriptions = []
-    for symbol in symbols:
-        subscriptions.extend([
-            {"symbol": symbol, "type": "Greeks"},
-            {"symbol": symbol, "type": "Summary"},
-            {"symbol": symbol, "type": "Trade"},
-        ])
-
-    ws.send(json.dumps({
-        "type": "FEED_SUBSCRIPTION",
-        "channel": 1,
-        "add": subscriptions
-    }))
-
-    data = {}
-    start = time.time()
-
-    while time.time() - start < wait_seconds:
-        try:
-            ws.settimeout(0.5)
-            msg = json.loads(ws.recv())
-
-            if msg.get("type") == "FEED_DATA":
-                for item in msg.get("data", []):
-                    symbol = item.get("eventSymbol")
-                    event_type = item.get("eventType")
-
-                    if symbol not in data:
-                        data[symbol] = {}
-
-                    if event_type == "Greeks":
-                        data[symbol]["gamma"] = item.get("gamma")
-                        data[symbol]["delta"] = item.get("delta")
-                        data[symbol]["vega"] = item.get("vega")
-                        data[symbol]["iv"] = item.get("volatility")
-                    elif event_type == "Summary":
-                        data[symbol]["oi"] = item.get("openInterest")
-                    elif event_type == "Trade":
-                        # Cumulative volume from Trade events
-                        data[symbol]["volume"] = item.get("dayVolume", 0)
-        except:
-            continue
-
-    return data
 
 
 
@@ -446,13 +278,9 @@ def main():
         if fetch_triggered:
             with st.spinner(f"Fetching {symbol} data..."):
                 try:
-                    # Get token and connect
-                    token = ensure_streamer_token()
-                    ws = connect_websocket(token)
-
                     # Get underlying price
                     st.info(f"📊 Getting {symbol} price...")
-                    price = get_underlying_price(ws, symbol)
+                    price = get_underlying_price(symbol)
 
                     if not price:
                         price = default_price
@@ -460,25 +288,25 @@ def main():
                     else:
                         st.success(f"✅ {symbol} Price: ${price:,.2f}")
 
-                    # Generate option symbols
-                    option_symbols = generate_option_symbols(
-                        price,
-                        option_prefix,
-                        expiration,
-                        strikes_up,
-                        strikes_down,
-                        increment
-                    )
-
-                    st.info(f"📡 Fetching data for {len(option_symbols)} options...")
+                    st.info(f"📡 Fetching option chain...")
 
                     # Fetch option data
-                    option_data = fetch_option_data(ws, option_symbols, wait_seconds=20)
+                    raw_option_data = fetch_option_data(symbol, expiration)
+                    
+                    # Filter option_data by strike
+                    center_strike = round(price / increment) * increment
+                    lower_bound = center_strike - (strikes_down * increment)
+                    upper_bound = center_strike + (strikes_up * increment)
+                    
+                    from utils.gex_calculator import parse_option_symbol
+                    option_data = {}
+                    for sym, data in raw_option_data.items():
+                        parsed = parse_option_symbol(sym)
+                        if parsed and lower_bound <= parsed['strike'] <= upper_bound:
+                            option_data[sym] = data
 
-                    # Fetch VIX before closing WebSocket
-                    current_vix = get_vix_price(ws, timeout=3)
-
-                    ws.close()
+                    # Fetch VIX
+                    current_vix = get_vix_price()
 
                     # Calculate GEX
                     calc = GEXCalculator()
@@ -711,8 +539,11 @@ def main():
             line_dash="dash",
             line_color="orange",
             line_width=2,
-            annotation_text=f"${st.session_state.underlying_price:,.2f}",
-            annotation_position="top"
+            annotation_text=f"${st.session_state.underlying_price:,.2f} (Spot)",
+            annotation_position="top left",
+            annotation_font=dict(color="orange", weight="bold", size=11),
+            annotation_bgcolor="rgba(0,0,0,0.8)",
+            annotation_borderpad=3
         )
 
         # Add vertical line at Zero Gamma level (Gamma Flip)
@@ -724,7 +555,10 @@ def main():
                 line_color="purple",
                 line_width=2,
                 annotation_text=f"Zero Γ: ${zero_gamma:,.2f}",
-                annotation_position="top"
+                annotation_position="bottom right",
+                annotation_font=dict(color="violet", weight="bold", size=11),
+                annotation_bgcolor="rgba(0,0,0,0.8)",
+                annotation_borderpad=3
             )
 
         # Format expiration for display
@@ -744,7 +578,7 @@ def main():
             height=500
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         st.subheader("📈 Dealer Gamma Exposure")
@@ -928,8 +762,11 @@ def main():
             line_dash="dash",
             line_color="orange",
             line_width=2,
-            annotation_text=f"${st.session_state.underlying_price:,.2f}",
-            annotation_position="top"
+            annotation_text=f"${st.session_state.underlying_price:,.2f} (Spot)",
+            annotation_position="top left",
+            annotation_font=dict(color="orange", weight="bold", size=11),
+            annotation_bgcolor="rgba(0,0,0,0.8)",
+            annotation_borderpad=3
         )
 
         # Format expiration date for display (YYMMDD -> Mon DD, YYYY)
@@ -949,7 +786,7 @@ def main():
             hovermode='x unified'
         )
 
-        st.plotly_chart(fig_iv, width='stretch')
+        st.plotly_chart(fig_iv, use_container_width=True)
 
     st.subheader("📊 Volume & Open Interest")
 
@@ -991,7 +828,7 @@ def main():
                 template='plotly_white',
                 height=400
             )
-            st.plotly_chart(fig_oi, width='stretch')
+            st.plotly_chart(fig_oi, use_container_width=True)
 
         with col4:
             # Volume Chart with toggle
@@ -1051,7 +888,7 @@ def main():
                 template='plotly_white',
                 height=400
             )
-            st.plotly_chart(fig_vol, width='stretch')
+            st.plotly_chart(fig_vol, use_container_width=True)
 
         # Top Strikes Table
         st.subheader("🔝 Top Strikes")

@@ -35,42 +35,6 @@ class VIXSlope:
     data_points: int        # Number of readings used
 
 
-def get_vix_price(ws, timeout: int = 3) -> Optional[float]:
-    """
-    Get current VIX level from Tastytrade dxFeed WebSocket.
-
-    Args:
-        ws: Active WebSocket connection (already authenticated)
-        timeout: Seconds to wait for data
-
-    Returns:
-        VIX price (e.g., 24.93) or None if unavailable
-    """
-    try:
-        ws.send(json.dumps({
-            "type": "FEED_SUBSCRIPTION",
-            "channel": 1,
-            "add": [{"symbol": "VIX", "type": "Trade"}]
-        }))
-
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                ws.settimeout(1)
-                msg = json.loads(ws.recv())
-                if msg.get("type") == "FEED_DATA":
-                    for data in msg.get("data", []):
-                        if data.get("eventSymbol") == "VIX" and data.get("eventType") == "Trade":
-                            price = data.get("price")
-                            if price:
-                                return float(price)
-            except:
-                continue
-
-    except Exception as e:
-        logger.error(f"Error fetching VIX: {e}")
-
-    return None
 
 
 def determine_iv_direction(

@@ -463,8 +463,11 @@ def main():
             line_dash="dash",
             line_color="orange",
             line_width=2,
-            annotation_text=f"${st.session_state.underlying_price:,.2f}",
-            annotation_position="top"
+            annotation_text=f"${st.session_state.underlying_price:,.2f} (Spot)",
+            annotation_position="top left",
+            annotation_font=dict(color="orange", weight="bold", size=11),
+            annotation_bgcolor="rgba(0,0,0,0.8)",
+            annotation_borderpad=3
         )
 
         # Add vertical line at Zero Gamma level (Gamma Flip)
@@ -476,7 +479,10 @@ def main():
                 line_color="purple",
                 line_width=2,
                 annotation_text=f"Zero Γ: ${zero_gamma:,.2f}",
-                annotation_position="bottom"
+                annotation_position="bottom right",
+                annotation_font=dict(color="violet", weight="bold", size=11),
+                annotation_bgcolor="rgba(0,0,0,0.8)",
+                annotation_borderpad=3
             )
 
         # Format expiration for display
@@ -496,7 +502,7 @@ def main():
             height=500
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         st.subheader("📈 Total GEX")
@@ -559,8 +565,11 @@ def main():
             line_dash="dash",
             line_color="orange",
             line_width=2,
-            annotation_text=f"${st.session_state.underlying_price:,.2f}",
-            annotation_position="top"
+            annotation_text=f"${st.session_state.underlying_price:,.2f} (Spot)",
+            annotation_position="top left",
+            annotation_font=dict(color="orange", weight="bold", size=11),
+            annotation_bgcolor="rgba(0,0,0,0.8)",
+            annotation_borderpad=3
         )
 
         # Format expiration date for display (YYMMDD -> Mon DD, YYYY)
@@ -580,7 +589,7 @@ def main():
             hovermode='x unified'
         )
 
-        st.plotly_chart(fig_iv, width='stretch')
+        st.plotly_chart(fig_iv, use_container_width=True)
 
     st.divider()
     st.header("📊 Volume & Open Interest Analysis")
@@ -623,7 +632,7 @@ def main():
                 template='plotly_white',
                 height=400
             )
-            st.plotly_chart(fig_oi, width='stretch')
+            st.plotly_chart(fig_oi, use_container_width=True)
 
         with col4:
             # Volume Chart with toggle
@@ -683,7 +692,7 @@ def main():
                 template='plotly_white',
                 height=400
             )
-            st.plotly_chart(fig_vol, width='stretch')
+            st.plotly_chart(fig_vol, use_container_width=True)
 
         # Top Strikes Table
         st.subheader("🔝 Top Strikes")
