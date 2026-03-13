@@ -277,7 +277,7 @@ def main():
         st.divider()
 
         # Manual fetch button
-        fetch_triggered = st.button("🔄 Fetch Data", type="primary", width='stretch')
+        fetch_triggered = st.button("🔄 Fetch Data", type="primary", use_container_width=True)
 
         # Auto-fetch logic
         if st.session_state.auto_refresh:
@@ -964,13 +964,13 @@ def main():
             top_oi = strike_df.nlargest(10, 'total_oi')[['strike', 'call_oi', 'put_oi', 'total_oi']]
             top_oi['strike'] = top_oi['strike'].apply(lambda x: f"${x:,.0f}")
             top_oi.columns = ['Strike', 'Call OI', 'Put OI', 'Total OI']
-            st.dataframe(top_oi, hide_index=True, width='stretch')
+            st.dataframe(top_oi, hide_index=True, use_container_width=True)
 
         with tab2:
             top_vol = strike_df.nlargest(10, 'total_volume')[['strike', 'call_volume', 'put_volume', 'total_volume']]
             top_vol['strike'] = top_vol['strike'].apply(lambda x: f"${x:,.0f}")
             top_vol.columns = ['Strike', 'Call Vol', 'Put Vol', 'Total Vol']
-            st.dataframe(top_vol, hide_index=True, width='stretch')
+            st.dataframe(top_vol, hide_index=True, use_container_width=True)
 
         with tab3:
             # Calculate put/call ratio
@@ -982,7 +982,7 @@ def main():
             top_pc['pc_ratio_oi'] = top_pc['pc_ratio_oi'].apply(lambda x: f"{x:.2f}")
             top_pc['pc_ratio_vol'] = top_pc['pc_ratio_vol'].apply(lambda x: f"{x:.2f}")
             top_pc.columns = ['Strike', 'P/C Ratio (OI)', 'P/C Ratio (Vol)', 'Total OI']
-            st.dataframe(top_pc, hide_index=True, width='stretch')
+            st.dataframe(top_pc, hide_index=True, use_container_width=True)
 
     # Sentiment Ratios
     st.subheader("📊 Sentiment Ratios")
