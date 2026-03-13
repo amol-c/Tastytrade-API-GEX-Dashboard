@@ -294,6 +294,8 @@ def process_feed_data(
     msg: Dict,
     accumulator: TickDataAccumulator,
     set_opening_oi: bool = False,
+    delta_calculator=None,
+    greeks_data: Optional[Dict] = None,
 ):
     """
     Process a FEED_DATA message and update the accumulator.
@@ -302,6 +304,8 @@ def process_feed_data(
         msg: The FEED_DATA message from WebSocket
         accumulator: TickDataAccumulator instance to update
         set_opening_oi: If True, also set opening OI from Summary events
+        delta_calculator: Optional DeltaFlowCalculator to update with trade delta
+        greeks_data: Dict mapping symbol -> {delta, ...} for delta calculation
     """
     if msg.get("type") != "FEED_DATA":
         return
@@ -318,6 +322,17 @@ def process_feed_data(
                     parsed["size"],
                     parsed["side"],
                 )
+
+                # Update delta calculator if provided
+                if delta_calculator is not None and greeks_data is not None:
+                    delta = greeks_data.get(parsed["symbol"], {}).get("delta", 0)
+                    if delta != 0:
+                        delta_calculator.process_trade(
+                            symbol=parsed["symbol"],
+                            aggressor_side=parsed["side"],
+                            contracts=parsed["size"],
+                            delta=delta,
+                        )
 
         elif event_type == "Summary" and set_opening_oi:
             oi = event.get("openInterest", 0)

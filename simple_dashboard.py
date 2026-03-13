@@ -23,6 +23,7 @@ from websocket import create_connection
 from components.account_settings import render_account_settings
 from components.charm_display import render_charm_section
 from components.combined_flow_display import render_combined_flow_section
+from components.combined_hedge_display import render_combined_hedge
 from components.dashboard_layout import (
     render_ai_prompt_expander,
     render_key_levels_expander,
@@ -39,8 +40,11 @@ from components.vex_display import render_vex_section
 from components.vix_display import render_vix_section
 from utils.auth import ensure_streamer_token
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
+from utils.delta_flow_calculator import DeltaFlowCalculator
+from utils.delta_flow_history import DeltaFlowHistoryTracker
 from utils.gex_calculator import GEXCalculator
 from utils.tick_data_manager import TickDataManager
+from components.delta_flow_display import render_delta_flow_section
 from components.tick_display import render_tick_data_expander, render_tick_summary
 from components.top_strikes_table import render_top_strikes_table
 from utils.market_analyzer import MarketAnalyzer
@@ -647,6 +651,34 @@ def main():
                             expiry=expiration,
                         )
 
+                    # Set up Delta Flow Calculator for tick data processing
+                    # Build greeks_data from option_data for delta weighting
+                    greeks_data = {
+                        symbol: {"delta": data.get("delta", 0)}
+                        for symbol, data in option_data.items()
+                        if data.get("delta") is not None
+                    }
+
+                    # Create or reuse delta flow calculator
+                    if 'delta_flow_calculator' not in st.session_state:
+                        st.session_state.delta_flow_calculator = DeltaFlowCalculator()
+                    delta_calc = st.session_state.delta_flow_calculator
+
+                    # Wire up calculator with tick manager for future messages
+                    tick_manager.set_delta_calculator(delta_calc)
+                    tick_manager.set_greeks_data(greeks_data)
+                    st.session_state.greeks_data = greeks_data
+
+                    # Track delta flow history
+                    if delta_calc.trade_count > 0:
+                        delta_tracker = DeltaFlowHistoryTracker(expiry=expiration)
+                        delta_tracker.add_record(
+                            spot_price=price,
+                            cumulative_customer_delta=delta_calc.cumulative_customer_delta,
+                            flow_direction=delta_calc.get_flow_direction().value,
+                            trade_count=delta_calc.trade_count,
+                        )
+
                     greeks_count = sum(1 for d in option_data.values() if "gamma" in d)
                     oi_count = sum(1 for d in option_data.values() if "oi" in d)
                     volume_count = sum(1 for d in option_data.values() if "volume" in d)
@@ -962,6 +994,63 @@ def main():
 
         # Charm section
         render_charm_section(analysis, expiry)
+
+        # Delta Flow section
+        delta_calc = st.session_state.get('delta_flow_calculator')
+        if delta_calc and delta_calc.trade_count > 0:
+            render_delta_flow_section(
+                cumulative_delta=delta_calc.cumulative_customer_delta,
+                spot_price=analysis.current_price,
+                flow_direction=delta_calc.get_flow_direction().value,
+                trade_count=delta_calc.trade_count,
+                expiry=expiry,
+            )
+        else:
+            st.divider()
+            st.subheader("Delta Flow - ES Futures Equivalent")
+            st.caption("No trade data yet. Delta flow will appear after tick data is processed.")
+
+        # Combined Dealer Hedge section
+        st.divider()
+
+        # Calculate ES equivalents for all three sources
+        charm_es = 0.0
+        if analysis.charm_flow and analysis.charm_flow.net_charm is not None:
+            charm_es = calculate_es_futures_equivalent(
+                analysis.charm_flow.net_charm,
+                analysis.current_price,
+            )
+
+        vanna_es = 0.0
+        vanna_result = st.session_state.get('vanna_result')
+        if vanna_result and vanna_result.net_vanna is not None:
+            vanna_es = calculate_es_futures_from_vanna(
+                vanna_result.net_vanna,
+                analysis.current_price,
+                st.session_state.get('iv_direction', 'FLAT'),
+            )
+
+        delta_flow_es = 0.0
+        if delta_calc:
+            delta_flow_es = delta_calc.get_dealer_hedge_es(analysis.current_price)
+
+        # Determine near-expiry flags
+        is_charm_max = False
+        is_vanna_minimal = False
+        if analysis.charm_flow:
+            # Check if near expiry (< 2 hours)
+            hours_to_expiry = getattr(analysis.charm_flow, 'hours_to_expiry', None)
+            if hours_to_expiry is not None and hours_to_expiry < 2:
+                is_charm_max = True
+                is_vanna_minimal = True
+
+        render_combined_hedge(
+            charm_es=charm_es,
+            vanna_es=vanna_es,
+            delta_flow_es=delta_flow_es,
+            is_charm_max=is_charm_max,
+            is_vanna_minimal=is_vanna_minimal,
+        )
 
         # AI Prompt
         render_ai_prompt_expander(analysis)

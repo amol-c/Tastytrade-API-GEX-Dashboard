@@ -5,11 +5,14 @@ Provides UI elements for displaying real-time OI estimation data:
 - OI adjustment indicators
 - Buy/sell volume breakdown
 - Per-strike flow visualization
+- Delta-weighted flow metrics
 
 Single Responsibility: Data formatting and Streamlit rendering for tick data.
 """
 import streamlit as st
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
+
+from utils.delta_flow_calculator import calculate_delta_weighted_flow, ES_MULTIPLIER
 
 if TYPE_CHECKING:
     from utils.tick_data_manager import TickDataManager
@@ -279,14 +282,18 @@ def render_volume_bar(buy_volume: int, sell_volume: int, width: int = 100):
     )
 
 
-def render_tick_data_expander(tick_manager: Optional["TickDataManager"]):
+def render_tick_data_expander(
+    tick_manager: Optional["TickDataManager"],
+    greeks_data: Optional[Dict] = None,
+):
     """
     Render tick data details in an expander.
 
     Args:
         tick_manager: TickDataManager instance
+        greeks_data: Optional dict mapping symbol -> {delta, ...}
     """
-    with st.expander("📊 Real-Time OI Data", expanded=False):
+    with st.expander("📊 Real-Time Delta Flow", expanded=False):
         if tick_manager is None:
             st.info("Tick data will accumulate as you fetch data")
             return
@@ -297,30 +304,79 @@ def render_tick_data_expander(tick_manager: Optional["TickDataManager"]):
             st.info("No tick data accumulated yet. Fetch data to start accumulating.")
             return
 
-        # Summary metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Symbols", summary["symbol_count"])
-        with col2:
-            st.metric("Buy Vol", f"{summary['total_buy']:,}")
-        with col3:
-            st.metric("Sell Vol", f"{summary['total_sell']:,}")
-        with col4:
-            net = summary["net_flow"]
-            direction = "↑" if net > 0 else "↓" if net < 0 else ""
-            st.metric("Net Flow", f"{direction}{abs(net):,}")
+        # Check if we can show delta-weighted metrics
+        has_greeks = greeks_data is not None and len(greeks_data) > 0
 
-        # Flow direction
-        direction = summary["flow_direction"]
-        if direction == "BUY":
-            st.success("📈 Net Buying Pressure - OI likely increasing")
-        elif direction == "SELL":
-            st.warning("📉 Net Selling Pressure - OI likely decreasing")
+        if has_greeks:
+            # Delta-weighted metrics
+            tick_data = _extract_tick_data_for_delta(tick_manager)
+            delta_bought, delta_sold = calculate_delta_weighted_flow(tick_data, greeks_data)
+            net_delta = delta_bought + delta_sold
+            es_equivalent = -net_delta / ES_MULTIPLIER  # Dealer hedge
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Symbols", summary["symbol_count"])
+            with col2:
+                st.metric("Δ Bought", f"{delta_bought:+,.0f}")
+            with col3:
+                st.metric("Δ Sold", f"{delta_sold:,.0f}")
+            with col4:
+                direction = "↑" if es_equivalent > 0 else "↓" if es_equivalent < 0 else ""
+                st.metric("Dealer Hedge", f"{direction}{abs(es_equivalent):,.0f} ES")
+
+            # Flow direction based on dealer hedge
+            if es_equivalent > 100:
+                st.success("📈 Dealers BUY pressure - Customers net short delta")
+            elif es_equivalent < -100:
+                st.warning("📉 Dealers SELL pressure - Customers net long delta")
+            else:
+                st.info("➡️ Neutral Delta Flow")
+
+            st.caption(
+                "Delta Flow = Σ(contracts × delta × 100). "
+                "Shows dealer hedge requirement from customer trades."
+            )
         else:
-            st.info("➡️ Neutral Flow")
+            # Fallback to contract-based metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Symbols", summary["symbol_count"])
+            with col2:
+                st.metric("Buy Vol", f"{summary['total_buy']:,}")
+            with col3:
+                st.metric("Sell Vol", f"{summary['total_sell']:,}")
+            with col4:
+                net = summary["net_flow"]
+                direction = "↑" if net > 0 else "↓" if net < 0 else ""
+                st.metric("Net Flow", f"{direction}{abs(net):,}")
 
-        st.caption(
-            "Note: OI estimation uses TimeAndSale aggressor data. "
-            "Buy-initiated trades suggest new positions opening, "
-            "sell-initiated suggest closing."
-        )
+            # Flow direction
+            direction = summary["flow_direction"]
+            if direction == "BUY":
+                st.success("📈 Net Buying Pressure - OI likely increasing")
+            elif direction == "SELL":
+                st.warning("📉 Net Selling Pressure - OI likely decreasing")
+            else:
+                st.info("➡️ Neutral Flow")
+
+            st.caption(
+                "Note: Contract-based flow (Greeks not available). "
+                "Pass Greeks data for delta-weighted metrics."
+            )
+
+
+def _extract_tick_data_for_delta(tick_manager: "TickDataManager") -> Dict[str, Dict]:
+    """
+    Extract tick data in format needed for delta calculation.
+
+    Returns:
+        Dict mapping symbol -> {buy_volume, sell_volume}
+    """
+    result = {}
+    for symbol, data in tick_manager.accumulator.data.items():
+        result[symbol] = {
+            "buy_volume": data.buy_volume,
+            "sell_volume": data.sell_volume,
+        }
+    return result

@@ -21,6 +21,7 @@ from utils.tick_accumulator import (
     get_effective_oi,
 )
 from utils.app_paths import get_data_folder
+from utils.delta_flow_calculator import DeltaFlowCalculator, DeltaFlowDirection
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ class TickDataManager:
         self.data_folder = data_folder or get_data_folder("tick_data")
         self._last_save_time = time.time()
         self._dirty = False
+
+        # Delta flow support
+        self.delta_calculator: Optional[DeltaFlowCalculator] = None
+        self._greeks_data: Optional[Dict] = None
 
         self.accumulator = TickDataAccumulator(
             expiry=expiry,
@@ -99,8 +104,57 @@ class TickDataManager:
         if msg.get("type") != "FEED_DATA":
             return
 
-        process_feed_data(msg, self.accumulator, set_opening_oi=set_opening_oi)
+        process_feed_data(
+            msg,
+            self.accumulator,
+            set_opening_oi=set_opening_oi,
+            delta_calculator=self.delta_calculator,
+            greeks_data=self._greeks_data,
+        )
         self._dirty = True
+
+    def set_delta_calculator(self, calculator: DeltaFlowCalculator):
+        """
+        Set the delta flow calculator for trade delta tracking.
+
+        Args:
+            calculator: DeltaFlowCalculator instance
+        """
+        self.delta_calculator = calculator
+
+    def set_greeks_data(self, greeks_data: Dict):
+        """
+        Set Greeks data for delta calculation.
+
+        Args:
+            greeks_data: Dict mapping symbol -> {delta, ...}
+        """
+        self._greeks_data = greeks_data
+
+    def get_delta_flow_es(self, spot_price: float) -> float:
+        """
+        Get dealer hedge in ES contract equivalent.
+
+        Args:
+            spot_price: Current underlying price
+
+        Returns:
+            ES contracts (positive = BUY, negative = SELL)
+        """
+        if self.delta_calculator is None:
+            return 0.0
+        return self.delta_calculator.get_dealer_hedge_es(spot_price)
+
+    def get_delta_flow_direction(self) -> DeltaFlowDirection:
+        """
+        Get dealer hedge direction from delta flow.
+
+        Returns:
+            DeltaFlowDirection (BUY, SELL, or NEUTRAL)
+        """
+        if self.delta_calculator is None:
+            return DeltaFlowDirection.NEUTRAL
+        return self.delta_calculator.get_flow_direction()
 
     def generate_subscriptions(self, symbols: List[str]) -> List[Dict]:
         """
