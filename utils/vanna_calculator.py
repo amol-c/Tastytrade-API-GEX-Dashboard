@@ -10,6 +10,19 @@ Flow interpretation (with dealer positioning):
 - Positive net vanna + IV falling → BUY (bullish)
 - Negative net vanna + IV rising → BUY (bullish)
 - Negative net vanna + IV falling → SELL (bearish)
+
+IMPORTANT: Near-Expiry Limitation
+--------------------------------
+Vanna calculations become unreliable as time-to-expiry (TTE) approaches zero.
+As TTE → 0, the vanna formula produces extreme values because:
+  - The √T term in the denominator approaches 0
+  - Vega approaches 0 (no time value left)
+  - Options lose sensitivity to IV changes
+
+We apply a MIN_TTE cutoff of ~2 hours. When TTE < MIN_TTE:
+  - Vanna returns 0 (no signal)
+  - This prevents false/extreme readings on 0DTE near close
+  - Use gamma-based analysis instead for near-expiry hedging
 """
 import math
 import logging
@@ -55,9 +68,20 @@ class VannaCalculator:
     Dealer positioning (SpotGamma model):
     - Dealers LONG calls → keep vanna sign
     - Dealers SHORT puts → negate vanna sign
+
+    Near-Expiry Warning:
+    - MIN_TTE = ~2 hours
+    - Values may be unreliable when TTE < MIN_TTE (but still calculated)
     """
 
-    MIN_TTE = 2 / (252 * 6.5)  # ~2 hours minimum
+    # Minimum time-to-expiry: ~2 hours in trading year terms
+    # Formula: 2 hours / (252 trading days × 6.5 hours per day)
+    # Below this threshold, vanna values may be unreliable
+    MIN_TTE = 2 / (252 * 6.5)
+
+    def is_near_expiry(self, tte: float) -> bool:
+        """Check if TTE is within 2 hours (vanna may be unreliable)."""
+        return tte <= self.MIN_TTE and tte > 0
 
     def __init__(self, neutral_threshold: float = 1_000_000):
         self.neutral_threshold = neutral_threshold
@@ -83,9 +107,9 @@ class VannaCalculator:
             tte: Time to expiry in years
 
         Returns:
-            Vanna value
+            Vanna value (may be unreliable when TTE < MIN_TTE)
         """
-        if spot <= 0 or iv <= 0 or tte <= self.MIN_TTE:
+        if spot <= 0 or iv <= 0 or tte <= 0:
             return 0.0
 
         if abs(delta) >= 0.99 or abs(delta) <= 0.01:

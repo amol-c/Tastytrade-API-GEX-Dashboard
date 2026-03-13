@@ -5,8 +5,10 @@ Displays Vanna ES futures chart and metrics.
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime
 
 from utils.vanna_history import VannaHistoryTracker, calculate_es_futures_from_vanna
+from utils.vanna_calculator import VannaCalculator
 
 
 def render_vanna_section(analysis, expiry: str, iv_direction: str):
@@ -52,6 +54,23 @@ def render_vanna_section_with_price(net_vanna: float, flow_direction: str, spot_
     st.divider()
     st.subheader("Vanna Flow - ES Futures Equivalent")
 
+    # Check if near expiry
+    vanna_calc = VannaCalculator()
+    is_near_expiry = False
+    try:
+        expiry_date = datetime.strptime(expiry, "%y%m%d")
+        expiry_datetime = expiry_date.replace(hour=16, minute=0)
+        now = datetime.now()
+        time_remaining = expiry_datetime - now
+        minutes_remaining = time_remaining.total_seconds() / 60
+        trading_minutes_per_year = 252 * 6.5 * 60
+        tte = max(0, minutes_remaining / trading_minutes_per_year)
+        is_near_expiry = vanna_calc.is_near_expiry(tte)
+        if is_near_expiry:
+            st.warning("⚠️ **Near-Expiry (<2 hours):** Vanna is **MINIMAL** - vega approaches 0 so options lose IV sensitivity. Gamma hedging dominates dealer activity.")
+    except:
+        pass  # Skip warning if can't calculate TTE
+
     st.caption("ES contracts dealers will trade due to IV changes (+ = BUY, - = SELL)")
 
     with st.expander("ℹ️ What is VEx (Vanna Exposure)?"):
@@ -67,10 +86,18 @@ Vanna measures delta sensitivity to IV changes. VEx aggregates this across all s
 - **Negative VEx + IV falling** → dealers **SELL** (bearish)
 
 *Based on SpotGamma dealer positioning: dealers long calls, short puts.*
+
+---
+⚠️ **Near-Expiry Limitation (0DTE)**
+
+When < 2 hours to expiry, vanna is shown as **"MINIMAL"** because:
+- Vega approaches 0 (no time value left)
+- Options lose sensitivity to IV changes
+- Near expiry, **gamma hedging dominates** dealer activity
 """)
 
     if net_vanna is None:
-        st.warning("⚠️ Vanna unavailable - insufficient Greeks data (showing historical data)")
+        st.info("ℹ️ **Vanna data unavailable** - Insufficient Greeks data. Showing historical data.")
         _render_vanna_chart(None, expiry)
         return
 
@@ -81,15 +108,27 @@ Vanna measures delta sensitivity to IV changes. VEx aggregates this across all s
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        es_sign = "+" if current_es >= 0 else "-"
-        st.metric(
-            "ES Futures to Neutralize",
-            f"{es_sign}{abs(current_es):,.0f} contracts",
-        )
+        if is_near_expiry:
+            st.metric(
+                "ES Futures to Neutralize",
+                "~0 (MINIMAL)",
+            )
+        else:
+            es_sign = "+" if current_es >= 0 else "-"
+            st.metric(
+                "ES Futures to Neutralize",
+                f"{es_sign}{abs(current_es):,.0f} contracts",
+            )
     with col2:
-        st.metric("Flow Direction", flow_direction)
+        if is_near_expiry:
+            st.metric("Flow Direction", "N/A")
+        else:
+            st.metric("Flow Direction", flow_direction)
     with col3:
-        st.metric("VEx", f"${net_vanna:,.0f}")
+        if is_near_expiry:
+            st.metric("VEx", "MINIMAL")
+        else:
+            st.metric("VEx", f"${net_vanna:,.0f}")
 
     _render_vanna_chart(current_es, expiry)
 

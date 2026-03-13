@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
+from utils.charm_calculator import CharmCalculator
 
 
 def render_charm_section(analysis, expiry: str):
@@ -20,6 +21,13 @@ def render_charm_section(analysis, expiry: str):
     st.divider()
     st.subheader("Charm Flow - ES Futures Equivalent")
 
+    # Check if near expiry
+    charm_calc = CharmCalculator()
+    is_near_expiry = charm_calc.is_near_expiry(expiry)
+
+    if is_near_expiry:
+        st.warning("⚠️ **Near-Expiry (<2 hours):** Charm is at **MAX** - delta decay is most intense but exact values are unreliable. Gamma hedging dominates dealer activity.")
+
     st.caption("ES contracts dealers will trade due to delta decay (+ = BUY, - = SELL)")
 
     with st.expander("ℹ️ What does Net Charm mean?"):
@@ -30,6 +38,14 @@ def render_charm_section(analysis, expiry: str):
 - **Positive charm** → ITM options solidifying → dealers add hedges → **SELL** pressure (bearish)
 
 *Based on SpotGamma dealer positioning model: dealers are long calls, short puts.*
+
+---
+⚠️ **Near-Expiry Limitation (0DTE)**
+
+When < 2 hours to expiry, charm is shown as **"MAX"** because:
+- Charm is theoretically at its **peak** (delta decaying fastest)
+- But the √T term in the formula → 0, making exact calculation unreliable
+- Near expiry, **gamma hedging dominates** as options approach binary payoffs
 """)
 
     # Check if current charm data is available
@@ -42,32 +58,43 @@ def render_charm_section(analysis, expiry: str):
             analysis.current_price
         )
         # Display current metrics
-        _render_current_metrics(analysis, current_es)
+        _render_current_metrics(analysis, current_es, is_near_expiry)
     else:
         current_es = None
-        st.warning("⚠️ Current charm unavailable - insufficient options with valid IV and OI (showing historical data)")
+        st.info("ℹ️ **Charm data unavailable** - Insufficient options with valid IV/OI. Showing historical data.")
 
     # Always display historical chart if data exists
-    _render_history_chart(current_es, expiry)
+    _render_history_chart(current_es, expiry, is_near_expiry)
 
 
-def _render_current_metrics(analysis, current_es):
+def _render_current_metrics(analysis, current_es, is_near_expiry=False):
     """Render current charm metrics."""
     es_col1, es_col2, es_col3 = st.columns(3)
 
     with es_col1:
-        es_sign = "-" if current_es < 0 else "+"
-        st.metric(
-            "ES Futures to Neutralize",
-            f"{es_sign}{abs(current_es):,.0f} contracts",
-        )
+        if is_near_expiry:
+            # Show MAX with direction indicator
+            es_sign = "+" if current_es >= 0 else "-"
+            st.metric(
+                "ES Futures to Neutralize",
+                f"{es_sign}MAX",
+            )
+        else:
+            es_sign = "-" if current_es < 0 else "+"
+            st.metric(
+                "ES Futures to Neutralize",
+                f"{es_sign}{abs(current_es):,.0f} contracts",
+            )
     with es_col2:
         st.metric("Flow Direction", analysis.charm_flow.direction)
     with es_col3:
-        st.metric("Net Charm", f"${analysis.charm_flow.net_charm:,.0f}")
+        if is_near_expiry:
+            st.metric("Net Charm", "MAX")
+        else:
+            st.metric("Net Charm", f"${analysis.charm_flow.net_charm:,.0f}")
 
 
-def _render_history_chart(current_es, expiry: str, limit=50):
+def _render_history_chart(current_es, expiry: str, is_near_expiry=False, limit=50):
     """Render ES contracts over time chart."""
     charm_tracker = CharmHistoryTracker(expiry=expiry)
     history = charm_tracker.get_es_futures_series(limit=limit)

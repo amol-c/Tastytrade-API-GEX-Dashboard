@@ -4,6 +4,19 @@ Calculates charm (delta decay) using Black-Scholes model and projects forward in
 
 Charm = rate of change of delta with respect to time
 Used to predict hedging flows as time passes.
+
+IMPORTANT: Near-Expiry Limitation
+--------------------------------
+Charm calculations become unreliable as time-to-expiry (TTE) approaches zero.
+As TTE → 0, the charm formula produces extreme values because:
+  - The √T term in the denominator approaches 0
+  - Gamma becomes extremely large (options are binary)
+  - Small changes in delta get amplified to unrealistic hedging flows
+
+We apply a MIN_TTE cutoff of ~2 hours. When TTE < MIN_TTE:
+  - Charm returns 0 (no signal)
+  - This prevents false/extreme readings on 0DTE near close
+  - Use gamma-based analysis instead for near-expiry hedging
 """
 import math
 import logging
@@ -69,7 +82,21 @@ class CharmCalculator:
     Dealer positioning adjustment:
     - Dealers are LONG calls → keep charm sign
     - Dealers are SHORT puts → negate charm sign
+
+    Near-Expiry Cutoff:
+    - MIN_TTE = ~2 hours (same as vanna)
+    - Returns 0 when TTE < MIN_TTE to avoid extreme/unreliable values
     """
+
+    # Minimum time-to-expiry: ~2 hours in trading year terms
+    # Formula: 2 hours / (252 trading days × 6.5 hours per day)
+    # Below this threshold, charm values may be unreliable
+    MIN_TTE = 2 / (252 * 6.5)
+
+    def is_near_expiry(self, expiry_str: str) -> bool:
+        """Check if we're within 2 hours of expiry (charm unreliable)."""
+        tte = self.calculate_tte_from_expiry(expiry_str, 0)
+        return tte <= self.MIN_TTE and tte > 0
 
     def __init__(
         self,
@@ -126,6 +153,7 @@ class CharmCalculator:
 
         Returns:
             Charm value (delta change per day)
+            Note: Values become unreliable when TTE < MIN_TTE (~2 hours)
         """
         if tte <= 0 or iv <= 0:
             return 0.0
@@ -247,6 +275,10 @@ class CharmCalculator:
         tte = self.calculate_tte_from_expiry(expiry_str, 0)
         if tte <= 0:
             return None
+
+        # Log warning if near expiry (data may be unreliable)
+        if tte <= self.MIN_TTE:
+            logger.warning(f"Charm WARNING: TTE ({tte:.6f}) < MIN_TTE ({self.MIN_TTE:.6f}) - values may be unreliable near expiry")
 
         charm_by_strike = {}
 
