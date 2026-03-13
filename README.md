@@ -8,6 +8,8 @@ A real-time Streamlit dashboard for monitoring options gamma exposure (GEX), vol
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Latest-red)
 
+> **Recommended:** Use the [Desktop App](#-desktop-app-recommended) for best results. It maintains a persistent connection and accumulates tick data throughout the trading day, even when minimized.
+
 ---
 
 ## 📸 Dashboard Preview
@@ -20,6 +22,8 @@ A real-time Streamlit dashboard for monitoring options gamma exposure (GEX), vol
 
 ## 🚀 Quick Start
 
+> **Tip:** For daily use, the [Desktop App](#-desktop-app-recommended) is preferred. The browser version below is best for quick testing or development.
+
 ### Prerequisites
 
 1. **Python 3.8+** - [Download here](https://www.python.org/downloads/)
@@ -28,7 +32,7 @@ A real-time Streamlit dashboard for monitoring options gamma exposure (GEX), vol
 2. **Tastytrade Account with API Access**
    - [Sign up at tastytrade.com](https://tastytrade.com)
 
-### Installation
+### Installation (Browser Version)
 
 **Option 1: Easy Install (Windows)**
 ```bash
@@ -53,13 +57,28 @@ Dashboard opens at: **http://localhost:8501**
 
 ---
 
-## 💻 Desktop App (Standalone)
+## 💻 Desktop App (Recommended)
 
-**No Python installation required!** Download the pre-built desktop app.
+**The desktop app is the recommended way to use this dashboard.**
+
+### Why Desktop App?
+
+| Feature | Browser | Desktop App |
+|---------|---------|-------------|
+| Persistent connection | ❌ Closes with tab | ✅ Stays connected |
+| Background data collection | ❌ No | ✅ Yes (minimized) |
+| Survives page refresh | ❌ No | ✅ Yes |
+| Full trading day coverage | ⚠️ Partial | ✅ Complete |
+| Tick data accumulation | ❌ Lost on close | ✅ Persists to disk |
+
+**For best results:**
+1. Launch the desktop app at or before market open (9:30 AM ET)
+2. Keep it running throughout the trading day (can minimize)
+3. Data persists to disk for recovery if needed
 
 ### Download
 
-Get the latest release from [GitHub Releases](../../releases):
+**No Python installation required!** Get the latest release from [GitHub Releases](../../releases):
 
 | Platform | Download |
 |----------|----------|
@@ -93,7 +112,7 @@ pip install -r requirements.txt
 pip install -r requirements-desktop.txt
 
 # Build executable
-pyinstaller gex_dashboard.spec
+pyinstaller GEX_Dashboard.spec
 
 # Output in dist/ folder
 ```
@@ -249,8 +268,12 @@ start_demo_dashboard.bat
 - `components/setup_wizard.py` - First-run credential setup UI
 - `utils/auth.py` - Token management with auto-refresh
 - `utils/gex_calculator.py` - Thread-safe GEX calculations
-- `gex_dashboard.spec` - PyInstaller build configuration
+- `utils/charm_history.py` - Charm exposure tracking
+- `utils/vanna_history.py` - Vanna exposure tracking
+- `utils/vix_tracker.py` - VIX tracking with slope analysis
+- `GEX_Dashboard.spec` - PyInstaller build configuration
 - `start_simple_dashboard.bat` - Dashboard launcher (Windows)
+- `data/` - History files (charm, vanna, VIX, tick data)
 
 ### Token Management (Automatic)
 - **Access Token:** 15-min expiry, refreshes when <60s remaining

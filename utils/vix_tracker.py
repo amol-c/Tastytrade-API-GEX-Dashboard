@@ -11,9 +11,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
+from utils.app_paths import get_data_folder
+
 logger = logging.getLogger(__name__)
 
-VIX_HISTORY_FOLDER = "vix_history"
+VIX_HISTORY_FOLDER = get_data_folder("vix_history")
 
 
 @dataclass

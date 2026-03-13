@@ -40,6 +40,9 @@ from components.vix_display import render_vix_section
 from utils.auth import ensure_streamer_token
 from utils.charm_history import CharmHistoryTracker, calculate_es_futures_equivalent
 from utils.gex_calculator import GEXCalculator
+from utils.tick_data_manager import TickDataManager
+from components.tick_display import render_tick_data_expander, render_tick_summary
+from components.top_strikes_table import render_top_strikes_table
 from utils.market_analyzer import MarketAnalyzer
 from utils.sentiment_calculator import SentimentCalculator
 from utils.vanna_calculator import VannaCalculator
@@ -206,8 +209,16 @@ def generate_option_symbols(center_price, option_prefix, expiration, strikes_up,
     return options
 
 
-def fetch_option_data(ws, symbols, wait_seconds=15):
-    """Fetch Greeks, Summary (OI), and Trade (Volume) for options"""
+def fetch_option_data(ws, symbols, wait_seconds=15, tick_manager=None):
+    """
+    Fetch Greeks, Summary (OI), Trade (Volume), and TimeAndSale for options.
+
+    Args:
+        ws: WebSocket connection
+        symbols: List of option symbols
+        wait_seconds: How long to collect data
+        tick_manager: Optional TickDataManager for real-time OI estimation
+    """
     subscriptions = []
     for symbol in symbols:
         subscriptions.extend([
@@ -215,6 +226,10 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
             {"symbol": symbol, "type": "Summary"},
             {"symbol": symbol, "type": "Trade"},
         ])
+
+    # Add TimeAndSale subscriptions if tick_manager provided
+    if tick_manager:
+        subscriptions.extend(tick_manager.generate_subscriptions(symbols))
 
     ws.send(json.dumps({
         "type": "FEED_SUBSCRIPTION",
@@ -231,6 +246,10 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
             msg = json.loads(ws.recv())
 
             if msg.get("type") == "FEED_DATA":
+                # Process TimeAndSale ticks if manager provided
+                if tick_manager:
+                    tick_manager.process_message(msg, set_opening_oi=True)
+
                 for item in msg.get("data", []):
                     symbol = item.get("eventSymbol")
                     event_type = item.get("eventType")
@@ -250,6 +269,11 @@ def fetch_option_data(ws, symbols, wait_seconds=15):
                         data[symbol]["volume"] = item.get("dayVolume", 0)
         except:
             continue
+
+    # Apply adjusted OI if tick_manager provided
+    if tick_manager:
+        data = tick_manager.apply_adjusted_oi(data)
+        tick_manager.maybe_save()
 
     return data
 
@@ -300,7 +324,7 @@ def run_market_analysis(symbol, price, expiration, option_data, gex_metrics, van
     })
 
 
-def aggregate_by_strike(option_data):
+def aggregate_by_strike(option_data, tick_manager=None):
     """Aggregate volume and OI by strike from option data"""
     from utils.gex_calculator import parse_option_symbol
 
@@ -321,7 +345,10 @@ def aggregate_by_strike(option_data):
                 'call_volume': 0,
                 'put_volume': 0,
                 'call_iv': None,
-                'put_iv': None
+                'put_iv': None,
+                'buy_volume': 0,
+                'sell_volume': 0,
+                'oi_adjusted': False,
             }
 
         # Convert to numbers (might be strings from WebSocket or NaN)
@@ -352,9 +379,18 @@ def aggregate_by_strike(option_data):
             if iv:
                 strike_data[strike]['put_iv'] = iv
 
+        # Add tick data if available
+        if tick_manager:
+            breakdown = tick_manager.get_volume_breakdown(symbol)
+            strike_data[strike]['buy_volume'] += breakdown['buy_volume']
+            strike_data[strike]['sell_volume'] += breakdown['sell_volume']
+            if data.get('oi_adjusted'):
+                strike_data[strike]['oi_adjusted'] = True
+
     # Convert to DataFrame
     rows = []
     for strike, data in strike_data.items():
+        net_flow = data['buy_volume'] - data['sell_volume']
         rows.append({
             'strike': strike,
             'call_oi': data['call_oi'],
@@ -364,7 +400,11 @@ def aggregate_by_strike(option_data):
             'total_oi': data['call_oi'] + data['put_oi'],
             'total_volume': data['call_volume'] + data['put_volume'],
             'call_iv': data['call_iv'],
-            'put_iv': data['put_iv']
+            'put_iv': data['put_iv'],
+            'buy_volume': data['buy_volume'],
+            'sell_volume': data['sell_volume'],
+            'net_flow': net_flow,
+            'oi_adjusted': data['oi_adjusted'],
         })
 
     df = pd.DataFrame(rows)
@@ -392,6 +432,8 @@ def main():
         st.session_state.gex_view = "Calls vs Puts"
     if 'volume_view' not in st.session_state:
         st.session_state.volume_view = "Calls vs Puts"
+    if 'tick_data_manager' not in st.session_state:
+        st.session_state.tick_data_manager = None
 
     # Sidebar controls
     with st.sidebar:
@@ -498,8 +540,15 @@ def main():
 
                     st.info(f"📡 Fetching data for {len(option_symbols)} options...")
 
-                    # Fetch option data
-                    option_data = fetch_option_data(ws, option_symbols, wait_seconds=20)
+                    # Initialize or update tick data manager for real-time OI
+                    tick_manager = st.session_state.tick_data_manager
+                    if tick_manager is None or tick_manager.expiry != expiration:
+                        tick_manager = TickDataManager(expiry=expiration)
+                        st.session_state.tick_data_manager = tick_manager
+                        logger.info(f"Created TickDataManager for expiry {expiration}")
+
+                    # Fetch option data with tick accumulation
+                    option_data = fetch_option_data(ws, option_symbols, wait_seconds=20, tick_manager=tick_manager)
 
                     # Fetch VIX before closing WebSocket
                     current_vix = get_vix_price(ws, timeout=3)
@@ -664,8 +713,12 @@ def main():
         render_greek_dominance_timer(expiry)
         render_bias_help_expander()
         render_market_analysis_header(analysis)
-        render_sentiment_section(metrics, aggregate_by_strike(st.session_state.option_data))
+        render_sentiment_section(metrics, aggregate_by_strike(st.session_state.option_data, st.session_state.tick_data_manager))
         render_key_levels_expander(analysis)
+
+    # Tick Data Summary (Real-Time OI Estimation)
+    if st.session_state.tick_data_manager:
+        render_tick_data_expander(st.session_state.tick_data_manager)
 
     # ============================================================
     # TIER 2: EXPOSURE CHARTS
@@ -870,7 +923,7 @@ def main():
     )
 
     # Aggregate data by strike (used for IV Skew and Volume/OI)
-    strike_df = aggregate_by_strike(st.session_state.option_data)
+    strike_df = aggregate_by_strike(st.session_state.option_data, st.session_state.tick_data_manager)
 
     # ============================================================
     # TIER 3: GREEK FLOWS (Time Series)
@@ -1079,35 +1132,8 @@ def main():
             )
             st.plotly_chart(fig_vol, width='stretch')
 
-        # Top Strikes Table
-        st.subheader("🔝 Top Strikes")
-
-        # Create tabs for different views
-        tab1, tab2, tab3 = st.tabs(["By Total OI", "By Total Volume", "By Put/Call Ratio"])
-
-        with tab1:
-            top_oi = strike_df.nlargest(10, 'total_oi')[['strike', 'call_oi', 'put_oi', 'total_oi']]
-            top_oi['strike'] = top_oi['strike'].apply(lambda x: f"${x:,.0f}")
-            top_oi.columns = ['Strike', 'Call OI', 'Put OI', 'Total OI']
-            st.dataframe(top_oi, hide_index=True, width='stretch')
-
-        with tab2:
-            top_vol = strike_df.nlargest(10, 'total_volume')[['strike', 'call_volume', 'put_volume', 'total_volume']]
-            top_vol['strike'] = top_vol['strike'].apply(lambda x: f"${x:,.0f}")
-            top_vol.columns = ['Strike', 'Call Vol', 'Put Vol', 'Total Vol']
-            st.dataframe(top_vol, hide_index=True, width='stretch')
-
-        with tab3:
-            # Calculate put/call ratio
-            pc_ratio_df = strike_df.copy()
-            pc_ratio_df['pc_ratio_oi'] = pc_ratio_df['put_oi'] / pc_ratio_df['call_oi'].replace(0, 1)
-            pc_ratio_df['pc_ratio_vol'] = pc_ratio_df['put_volume'] / pc_ratio_df['call_volume'].replace(0, 1)
-            top_pc = pc_ratio_df.nlargest(10, 'pc_ratio_oi')[['strike', 'pc_ratio_oi', 'pc_ratio_vol', 'total_oi']]
-            top_pc['strike'] = top_pc['strike'].apply(lambda x: f"${x:,.0f}")
-            top_pc['pc_ratio_oi'] = top_pc['pc_ratio_oi'].apply(lambda x: f"{x:.2f}")
-            top_pc['pc_ratio_vol'] = top_pc['pc_ratio_vol'].apply(lambda x: f"{x:.2f}")
-            top_pc.columns = ['Strike', 'P/C Ratio (OI)', 'P/C Ratio (Vol)', 'Total OI']
-            st.dataframe(top_pc, hide_index=True, width='stretch')
+        # Top Strikes Table (with tick data when available)
+        render_top_strikes_table(strike_df)
 
     # Auto-refresh logic - only rerun when it's time to fetch, not constantly
     if st.session_state.auto_refresh and st.session_state.last_fetch_time > 0:

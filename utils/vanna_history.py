@@ -8,9 +8,11 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from utils.app_paths import get_data_folder
+
 logger = logging.getLogger(__name__)
 
-VANNA_HISTORY_FOLDER = "vanna_history"
+VANNA_HISTORY_FOLDER = get_data_folder("vanna_history")
 ES_MULTIPLIER = 50
 
 

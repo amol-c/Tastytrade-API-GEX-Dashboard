@@ -9,13 +9,15 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from utils.app_paths import get_data_folder
+
 logger = logging.getLogger(__name__)
 
 # ES Futures multiplier ($50 per point)
 ES_MULTIPLIER = 50
 
-# Folder for charm history files
-CHARM_HISTORY_FOLDER = "charm_history"
+# Folder for charm history files (OS-specific app data directory)
+CHARM_HISTORY_FOLDER = get_data_folder("charm_history")
 
 
 def calculate_es_futures_equivalent(net_charm: float, spot_price: float) -> float:
