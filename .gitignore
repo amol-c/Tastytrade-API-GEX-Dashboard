@@ -4,11 +4,8 @@ tasty_token.json
 streamer_token.json
 streamer_token.txt
 
-vanna_history/
-vix_history/
-
-
-charm_history/
+# Data folder (history files, tick data)
+data/
 # Python
 *.pyc
 __pycache__/
@@ -51,5 +48,3 @@ htmlcov/
 # OS files
 Thumbs.db
 desktop.ini
-vanna_history/
-vix_history/
